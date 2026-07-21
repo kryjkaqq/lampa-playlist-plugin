@@ -1,6 +1,20 @@
 (function () {
     'use strict';
 
+    // Функция отправки команд в API TorrServer без CORS-блокировок
+    function sendTorrApi(host, payload) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', host + '/viewed', false);
+            // text/plain обходит CORS Preflight (OPTIONS) в браузере,
+            // благодаря чему TorrServer гарантированно получает и исполняет команду
+            xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+            xhr.send(JSON.stringify(payload));
+        } catch (e) {
+            console.error('TorrServer API Error:', e);
+        }
+    }
+
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
             Lampa.Noty.show('M3U TorrServer: Активен');
@@ -21,28 +35,23 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // 1. Отправляем в TorrServer явную установку текущего файла для проигрывания
-                            try {
-                                var setXhr = new XMLHttpRequest();
-                                setXhr.open('POST', host + '/torrents', false);
-                                setXhr.setRequestHeader('Content-Type', 'application/json');
-                                setXhr.send(JSON.stringify({
-                                    action: 'set_file',
+                            // 1. Гарантированно очищаем историю просмотров для этого торрента
+                            sendTorrApi(host, { action: 'rem', hash: hash });
+
+                            // 2. Если выбрана серия > 1 (индекс > 0), регистрируем предыдущую серию
+                            if (currentFileIndex > 0) {
+                                var targetIndex = currentFileIndex - 1;
+                                sendTorrApi(host, {
+                                    action: 'set',
                                     hash: hash,
-                                    file_index: currentFileIndex
-                                }));
-                            } catch (e) {}
+                                    file_index: targetIndex,
+                                    file: targetIndex,
+                                    index: targetIndex
+                                });
+                            }
 
-                            // 2. Также делаем сброс просмотра через удаление торрента из списка просмотренного (viewed)
-                            try {
-                                var remXhr = new XMLHttpRequest();
-                                remXhr.open('POST', host + '/viewed', false);
-                                remXhr.setRequestHeader('Content-Type', 'application/json');
-                                remXhr.send(JSON.stringify({ action: 'rem', hash: hash }));
-                            } catch (e) {}
-
-                            // 3. Формируем плейлист с явным указанием индекса начала: &index=N
-                            item.url = host + '/stream/playlist.m3u?link=' + hash + '&index=' + currentFileIndex + '&m3u';
+                            // 3. Отдаем плейлист с отсечкой от зафиксированной точки
+                            item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
                                 Lampa.Noty.show('Запуск с серии №' + (currentFileIndex + 1));
