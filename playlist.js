@@ -21,21 +21,15 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // Определяем индекс для TorrServer:
-                            // Чтобы fromlast выдал плейлист НАЧИНАЯ с выбранной серии, 
-                            // последней просмотренной нужно отметить файл ровно перед ней.
-                            // Если выбрана 1-я серия (индекс 0), сбрасываем историю полностью.
+                            // 1. Управляем историей просмотров через API TorrServer
                             try {
                                 var xhr = new XMLHttpRequest();
                                 xhr.open('POST', host + '/viewed', false);
-                                // text/plain обходит CORS-предзапросы в браузере
                                 xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
 
                                 if (currentFileIndex === 0) {
-                                    // Сброс истории для запуска с 1-й серии
                                     xhr.send(JSON.stringify({ action: 'rem', hash: hash }));
                                 } else {
-                                    // Принудительно перезаписываем индекс в TorrServer (работает и вперед, и назад)
                                     var targetIndex = currentFileIndex - 1;
                                     xhr.send(JSON.stringify({
                                         hash: hash,
@@ -46,7 +40,7 @@
                                 console.error('TorrServer View API Error:', e);
                             }
 
-                            // Отдаем чистый URL с флагом &fromlast
+                            // 2. Формируем чистый URL плейлиста
                             item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
@@ -56,6 +50,11 @@
                     }
                 } catch (e) {
                     console.error('Playlist Patch Error:', e);
+                }
+
+                // Безопасно вырезаем только точный хвост &play, не портя другие параметры
+                if (item && item.url) {
+                    item.url = item.url.replace(/&play(?=&|$)/g, '');
                 }
 
                 return originalPlay.call(this, item);
