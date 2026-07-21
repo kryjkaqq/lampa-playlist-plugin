@@ -3,7 +3,7 @@
 
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('M3U TorrServer (API): Активен');
+            Lampa.Noty.show('M3U TorrServer: Активен');
         }
 
         if (typeof Lampa !== 'undefined' && Lampa.Player) {
@@ -21,31 +21,28 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // 1. Сбрасываем старую историю просмотров через чистый API
+                            // 1. Отправляем в TorrServer явную установку текущего файла для проигрывания
                             try {
-                                var resetXhr = new XMLHttpRequest();
-                                resetXhr.open('POST', host + '/viewed', false);
-                                resetXhr.setRequestHeader('Content-Type', 'application/json');
-                                resetXhr.send(JSON.stringify({ action: 'rem', hash: hash }));
+                                var setXhr = new XMLHttpRequest();
+                                setXhr.open('POST', host + '/torrents', false);
+                                setXhr.setRequestHeader('Content-Type', 'application/json');
+                                setXhr.send(JSON.stringify({
+                                    action: 'set_file',
+                                    hash: hash,
+                                    file_index: currentFileIndex
+                                }));
                             } catch (e) {}
 
-                            // 2. Если серия > 1, метку "просмотрено" ставим через API без загрузки файла (без &play и без stream)
-                            if (currentFileIndex > 0) {
-                                var targetIndex = currentFileIndex - 1;
-                                try {
-                                    var setXhr = new XMLHttpRequest();
-                                    setXhr.open('POST', host + '/viewed', false);
-                                    setXhr.setRequestHeader('Content-Type', 'application/json');
-                                    setXhr.send(JSON.stringify({
-                                        action: 'set',
-                                        hash: hash,
-                                        file_index: targetIndex
-                                    }));
-                                } catch (e) {}
-                            }
+                            // 2. Также делаем сброс просмотра через удаление торрента из списка просмотренного (viewed)
+                            try {
+                                var remXhr = new XMLHttpRequest();
+                                remXhr.open('POST', host + '/viewed', false);
+                                remXhr.setRequestHeader('Content-Type', 'application/json');
+                                remXhr.send(JSON.stringify({ action: 'rem', hash: hash }));
+                            } catch (e) {}
 
-                            // 3. Передаем чистую ссылку на плейлист БЕЗ флага &play на конце!
-                            item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
+                            // 3. Формируем плейлист с явным указанием индекса начала: &index=N
+                            item.url = host + '/stream/playlist.m3u?link=' + hash + '&index=' + currentFileIndex + '&m3u';
 
                             if (Lampa.Noty) {
                                 Lampa.Noty.show('Запуск с серии №' + (currentFileIndex + 1));
