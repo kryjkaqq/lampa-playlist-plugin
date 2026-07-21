@@ -14,28 +14,29 @@
                     if (item && item.url && (item.url.indexOf('link=') !== -1 || item.url.indexOf('hash=') !== -1)) {
                         var hostMatch = item.url.match(/(https?:\/\/[^\/]+)/);
                         var hashMatch = item.url.match(/(?:link|hash)=([a-fA-F0-9]+)/);
-                        // Извлекаем id/index выбранного файла (серии)
+                        // Находим номер выбранного файла в ссылке Lampa
                         var indexMatch = item.url.match(/(?:index|id|file)=([0-9]+)/);
 
                         if (hostMatch && hashMatch) {
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
                             var title = item.title ? encodeURIComponent(item.title) : 'playlist';
-                            var fileIndex = indexMatch ? indexMatch[1] : null;
 
-                            // Формируем ссылку на плейлист
+                            // Базовый адрес генерации M3U
                             var playlistUrl = host + '/stream/' + title + '.m3u?link=' + hash + '&m3u';
 
-                            // Если передана конкретная серия — добавляем указатель на неё
-                            if (fileIndex !== null) {
-                                playlistUrl += '&index=' + fileIndex + '&play=' + fileIndex;
+                            if (indexMatch) {
+                                var fileIndex = parseInt(indexMatch[1], 10);
+                                
+                                // Параметр from отсекает все файлы ДО выбранного индекса
+                                playlistUrl += '&from=' + fileIndex;
+
+                                if (Lampa.Noty) {
+                                    Lampa.Noty.show('Плейлист сформирован начиная с серии №' + (fileIndex + 1));
+                                }
                             }
 
                             item.url = playlistUrl;
-
-                            if (Lampa.Noty) {
-                                Lampa.Noty.show('M3U: Запуск с выбранной серии');
-                            }
                         }
                     }
                 } catch (e) {
