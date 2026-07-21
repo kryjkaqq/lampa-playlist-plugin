@@ -3,7 +3,7 @@
 
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('M3U TorrServer: Активен');
+            Lampa.Noty.show('M3U TorrServer: Авто-режим активен');
         }
 
         if (typeof Lampa !== 'undefined' && Lampa.Player) {
@@ -16,43 +16,20 @@
                         var hashMatch = item.url.match(/(?:link|hash)=([a-fA-F0-9]+)/);
                         var indexMatch = item.url.match(/(?:index|id|file)=([0-9]+)/);
 
-                        if (hostMatch && hashMatch && indexMatch) {
+                        if (hostMatch && hashMatch) {
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
-                            var targetIndex = parseInt(indexMatch[1], 10); // Номер серии (0-based)
+                            var fileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+                            var title = item.title ? encodeURIComponent(item.title) : 'playlist';
 
-                            // Запрашиваем полный M3U у TorrServer
-                            var rawM3uUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u';
+                            // Формируем M3U с указанием стартового индекса (from) и флага m3u
+                            // TorrServer MatriX обрезает всё, что идёт ДО указанного index/from
+                            var playlistUrl = host + '/stream/' + title + '.m3u?link=' + hash + '&from=' + fileIndex + '&index=' + fileIndex + '&m3u';
 
-                            var xhr = new XMLHttpRequest();
-                            xhr.open('GET', rawM3uUrl, false); // Синхронный запрос для быстрой подмены
-                            xhr.send();
+                            item.url = playlistUrl;
 
-                            if (xhr.status === 200 && xhr.responseText) {
-                                var lines = xhr.responseText.split('\n');
-                                var newLines = ['#EXTM3U'];
-                                var currentIndex = 0;
-                                var keep = false;
-
-                                // Разбираем M3U по блокам #EXTINF
-                                for (var i = 0; i < lines.length; i++) {
-                                    var line = lines[i].trim();
-                                    if (line.indexOf('#EXTINF:') === 0) {
-                                        keep = (currentIndex >= targetIndex);
-                                        currentIndex++;
-                                    }
-                                    if (keep && line !== '#EXTM3U') {
-                                        newLines.push(line);
-                                    }
-                                }
-
-                                // Формируем Data-URL плейлиста без первых серий
-                                var modifiedM3u = newLines.join('\n');
-                                item.url = 'data:audio/x-mpegurl;charset=utf-8;base64,' + btoa(unescape(encodeURIComponent(modifiedM3u)));
-
-                                if (Lampa.Noty) {
-                                    Lampa.Noty.show('Запуск с серии №' + (targetIndex + 1));
-                                }
+                            if (Lampa.Noty) {
+                                Lampa.Noty.show('Плейлист: Серии ' + (fileIndex + 1) + '...');
                             }
                         }
                     }
