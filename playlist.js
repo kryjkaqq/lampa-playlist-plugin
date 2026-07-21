@@ -1,39 +1,45 @@
 (function () {
     'use strict';
 
-    if (typeof require === 'undefined') {
+    // 1. Получаем require из любого доступного места
+    const _require = typeof require !== 'undefined' 
+        ? require 
+        : (typeof window !== 'undefined' && window.require ? window.require : null);
+
+    if (!_require) {
+        console.warn('[PlaylistPatch] Node.js `require` не найден. Плагин работает только в Desktop/Electron.');
         return;
     }
 
     try {
-        const cp = require('child_process');
-        const fs = require('fs');
-        const path = require('path');
+        const cp = _require('child_process');
+        const fs = _require('fs');
+        const path = _require('path');
 
-        function log() {
+        function log(...args) {
+            const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+            console.log('[PlaylistPatch]', msg);
             try {
-                const text = Array.from(arguments).join(' ');
                 fs.appendFileSync(
                     path.join(process.cwd(), 'playlist-patch.log'),
-                    '[' + new Date().toLocaleTimeString() + '] ' + text + '\n'
+                    '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n'
                 );
             } catch (e) {}
         }
 
         if (cp.spawn.__playlistPatchApplied) {
-            log('Уже установлен');
+            log('Патч уже установлен');
             return;
         }
 
         const originalSpawn = cp.spawn;
 
         cp.spawn = function (command, args, options) {
-
             log('--------------------------------');
-            log('spawn:', command);
+            log('spawn command:', command);
 
             try {
-                log('args:', JSON.stringify(args));
+                log('original args:', args);
 
                 if (
                     typeof Lampa !== 'undefined' &&
@@ -42,14 +48,8 @@
                 ) {
                     const data = Lampa.Player.playdata();
 
-                    log('playdata:');
-                    log(JSON.stringify(data, null, 2));
-
-                    if (
-                        data &&
-                        Array.isArray(data.playlist)
-                    ) {
-                        log('playlist length:', data.playlist.length);
+                    if (data && Array.isArray(data.playlist)) {
+                        log('playlist total:', data.playlist.length);
 
                         let idx = data.playlist.findIndex(p => p.selected);
                         if (idx < 0) idx = 0;
@@ -61,22 +61,18 @@
                         log('usable playlist:', playlist.length);
 
                         if (playlist.length > 1 && Array.isArray(args)) {
-
                             const urlIndex = args.findIndex(a =>
                                 typeof a === 'string' &&
-                                a.length &&
+                                a.length > 0 &&
                                 a[0] !== '-'
                             );
 
-                            log('urlIndex:', urlIndex);
-
                             if (urlIndex !== -1) {
-
                                 const urls = playlist.map(p =>
                                     p.url.replace('&preload', '&play')
                                 );
 
-                                log('urls:', JSON.stringify(urls));
+                                log('replacing single URL with array of URLs:', urls);
 
                                 args = [
                                     ...args.slice(0, urlIndex),
@@ -84,21 +80,22 @@
                                     ...args.slice(urlIndex + 1)
                                 ];
 
-                                log('patched args:', JSON.stringify(args));
+                                log('patched args:', args);
                             }
                         }
                     }
                 }
             } catch (e) {
-                log('ERROR:', e.stack || e);
+                log('ERROR in spawn hook:', e.stack || e);
             }
 
             return originalSpawn.call(this, command, args, options);
         };
 
         cp.spawn.__playlistPatchApplied = true;
+        log('Патч успешно зарегистрирован!');
 
-        log('Патч установлен');
-
-    } catch (e) {}
+    } catch (e) {
+        console.error('[PlaylistPatch Init Error]', e);
+    }
 })();
