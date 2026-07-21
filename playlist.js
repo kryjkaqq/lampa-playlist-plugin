@@ -2,93 +2,103 @@
     'use strict';
 
     if (typeof require === 'undefined') {
-        console.warn('[playlist-patch] Node integration недоступна');
         return;
     }
 
     try {
         const cp = require('child_process');
+        const fs = require('fs');
+        const path = require('path');
+
+        function log() {
+            try {
+                const text = Array.from(arguments).join(' ');
+                fs.appendFileSync(
+                    path.join(process.cwd(), 'playlist-patch.log'),
+                    '[' + new Date().toLocaleTimeString() + '] ' + text + '\n'
+                );
+            } catch (e) {}
+        }
 
         if (cp.spawn.__playlistPatchApplied) {
+            log('Уже установлен');
             return;
         }
 
         const originalSpawn = cp.spawn;
 
         cp.spawn = function (command, args, options) {
+
+            log('--------------------------------');
+            log('spawn:', command);
+
             try {
-                if (
-                    !Array.isArray(args) ||
-                    typeof Lampa === 'undefined' ||
-                    !Lampa.Player ||
-                    typeof Lampa.Player.playdata !== 'function'
-                ) {
-                    return originalSpawn.call(this, command, args, options);
-                }
-
-                const data = Lampa.Player.playdata();
+                log('args:', JSON.stringify(args));
 
                 if (
-                    !data ||
-                    !Array.isArray(data.playlist) ||
-                    data.playlist.length < 2
+                    typeof Lampa !== 'undefined' &&
+                    Lampa.Player &&
+                    typeof Lampa.Player.playdata === 'function'
                 ) {
-                    return originalSpawn.call(this, command, args, options);
+                    const data = Lampa.Player.playdata();
+
+                    log('playdata:');
+                    log(JSON.stringify(data, null, 2));
+
+                    if (
+                        data &&
+                        Array.isArray(data.playlist)
+                    ) {
+                        log('playlist length:', data.playlist.length);
+
+                        let idx = data.playlist.findIndex(p => p.selected);
+                        if (idx < 0) idx = 0;
+
+                        const playlist = data.playlist
+                            .slice(idx)
+                            .filter(p => p && typeof p.url === 'string');
+
+                        log('usable playlist:', playlist.length);
+
+                        if (playlist.length > 1 && Array.isArray(args)) {
+
+                            const urlIndex = args.findIndex(a =>
+                                typeof a === 'string' &&
+                                a.length &&
+                                a[0] !== '-'
+                            );
+
+                            log('urlIndex:', urlIndex);
+
+                            if (urlIndex !== -1) {
+
+                                const urls = playlist.map(p =>
+                                    p.url.replace('&preload', '&play')
+                                );
+
+                                log('urls:', JSON.stringify(urls));
+
+                                args = [
+                                    ...args.slice(0, urlIndex),
+                                    ...urls,
+                                    ...args.slice(urlIndex + 1)
+                                ];
+
+                                log('patched args:', JSON.stringify(args));
+                            }
+                        }
+                    }
                 }
-
-                let current = data.playlist.findIndex(item => item.selected);
-                if (current < 0) current = 0;
-
-                const playlist = data.playlist
-                    .slice(current)
-                    .filter(item =>
-                        item &&
-                        typeof item.url === 'string' &&
-                        item.url.length
-                    );
-
-                if (playlist.length < 2) {
-                    return originalSpawn.call(this, command, args, options);
-                }
-
-                const urlIndex = args.findIndex(arg =>
-                    typeof arg === 'string' &&
-                    arg.length &&
-                    arg[0] !== '-'
-                );
-
-                if (urlIndex === -1) {
-                    console.warn('[playlist-patch] URL не найден');
-                    return originalSpawn.call(this, command, args, options);
-                }
-
-                const urls = playlist.map(item =>
-                    item.url.replace('&preload', '&play')
-                );
-
-                const newArgs = [
-                    ...args.slice(0, urlIndex),
-                    ...urls,
-                    ...args.slice(urlIndex + 1)
-                ];
-
-                console.log(
-                    `[playlist-patch] ${command}: ${urls.length} серий`
-                );
-
-                return originalSpawn.call(this, command, newArgs, options);
-
-            } catch (err) {
-                console.error('[playlist-patch]', err);
-                return originalSpawn.call(this, command, args, options);
+            } catch (e) {
+                log('ERROR:', e.stack || e);
             }
+
+            return originalSpawn.call(this, command, args, options);
         };
 
         cp.spawn.__playlistPatchApplied = true;
 
-        console.log('[playlist-patch] Установлен');
+        log('Патч установлен');
 
-    } catch (err) {
-        console.error('[playlist-patch]', err);
-    }
+    } catch (e) {}
 })();
