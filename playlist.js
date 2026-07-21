@@ -3,7 +3,7 @@
 
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('M3U TorrServer (fromlast): Активен');
+            Lampa.Noty.show('M3U TorrServer: Активен');
         }
 
         if (typeof Lampa !== 'undefined' && Lampa.Player) {
@@ -20,20 +20,31 @@
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
                             var fileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
-                            var title = item.title ? encodeURIComponent(item.title) : 'playlist';
 
-                            // 1. Мгновенно регистрируем выбранную серию в TorrServer как "последнюю"
-                            var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + fileIndex + '&play';
+                            // 1. Делаем быстрый запрос к TorrServer, фиксируя ТЕКУЩИЙ index как просматриваемый
+                            var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + fileIndex;
+                            
                             try {
                                 var xhr = new XMLHttpRequest();
-                                xhr.open('HEAD', pingUrl, false); // Быстрый запрос состояния
+                                xhr.open('GET', pingUrl, false); // Синхронный короткий пинг
                                 xhr.send();
                             } catch (e) {
-                                // Игнорируем прерывание сети, главное — статус передан на сервер
+                                // Игнорируем разрыв соединения
                             }
 
-                            // 2. Отдаем в PotPlayer ссылку на M3U с параметром &fromlast
-                            item.url = host + '/stream/' + title + '.m3u?link=' + hash + '&m3u&fromlast';
+                            // 2. Формируем валидный короткий URL без двойного encodeURIComponent
+                            var cleanTitle = 'playlist';
+                            if (item.title) {
+                                try {
+                                    // Проверяем, не закодирована ли строка уже
+                                    cleanTitle = encodeURIComponent(decodeURIComponent(item.title));
+                                } catch (e) {
+                                    cleanTitle = encodeURIComponent(item.title);
+                                }
+                            }
+
+                            // 3. Отдаем плейлист с &fromlast
+                            item.url = host + '/stream/' + cleanTitle + '.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
                                 Lampa.Noty.show('Запуск с серии №' + (fileIndex + 1));
