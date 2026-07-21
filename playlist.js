@@ -1,101 +1,80 @@
 (function () {
     'use strict';
 
-    // 1. Получаем require из любого доступного места
-    const _require = typeof require !== 'undefined' 
-        ? require 
+    const _require = typeof require !== 'undefined'
+        ? require
         : (typeof window !== 'undefined' && window.require ? window.require : null);
 
-    if (!_require) {
-        console.warn('[PlaylistPatch] Node.js `require` не найден. Плагин работает только в Desktop/Electron.');
-        return;
-    }
+    if (!_require) return;
 
     try {
         const cp = _require('child_process');
         const fs = _require('fs');
         const path = _require('path');
+        const os = _require('os');
 
         function log(...args) {
             const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
-            console.log('[PlaylistPatch]', msg);
             try {
                 fs.appendFileSync(
-                    path.join(process.cwd(), 'playlist-patch.log'),
+                    path.join(os.homedir(), 'lampa-patch.log'),
                     '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n'
                 );
             } catch (e) {}
         }
 
-        if (cp.spawn.__playlistPatchApplied) {
-            log('Патч уже установлен');
-            return;
-        }
+        if (cp.spawn.__playlistPatchApplied) return;
 
         const originalSpawn = cp.spawn;
 
         cp.spawn = function (command, args, options) {
-            log('--------------------------------');
-            log('spawn command:', command);
+            log('=== Запуск плеера:', command, '===');
+            log('Оригинальные аргументы:', JSON.stringify(args));
 
             try {
-                log('original args:', args);
+                if (Array.isArray(args)) {
+                    // Ищем URL TorrServer'а среди аргументов
+                    const urlIndex = args.findIndex(a => 
+                        typeof a === 'string' && 
+                        (a.includes('/stream') || a.includes('/play') || a.includes('link='))
+                    );
 
-                if (
-                    typeof Lampa !== 'undefined' &&
-                    Lampa.Player &&
-                    typeof Lampa.Player.playdata === 'function'
-                ) {
-                    const data = Lampa.Player.playdata();
+                    if (urlIndex !== -1) {
+                        const origUrl = args[urlIndex];
+                        log('Найден URL TorrServer:', origUrl);
 
-                    if (data && Array.isArray(data.playlist)) {
-                        log('playlist total:', data.playlist.length);
+                        // Пробуем достать hash из URL
+                        // Обычно ссылки выглядят как: http://127.0.0.1:8090/stream/... ?link=HASH...
+                        const urlObj = new URL(origUrl);
+                        const hash = urlObj.searchParams.get('link') || urlObj.searchParams.get('hash');
 
-                        let idx = data.playlist.findIndex(p => p.selected);
-                        if (idx < 0) idx = 0;
+                        if (hash) {
+                            // Формируем M3U ссылку прямо с TorrServer
+                            const m3uUrl = `${urlObj.origin}/playlist.m3u?hash=${hash}`;
+                            
+                            log('Сформирован M3U URL TorrServer:', m3uUrl);
 
-                        const playlist = data.playlist
-                            .slice(idx)
-                            .filter(p => p && typeof p.url === 'string');
+                            // Подменяем одиночную ссылку на плейлист
+                            args[urlIndex] = m3uUrl;
 
-                        log('usable playlist:', playlist.length);
-
-                        if (playlist.length > 1 && Array.isArray(args)) {
-                            const urlIndex = args.findIndex(a =>
-                                typeof a === 'string' &&
-                                a.length > 0 &&
-                                a[0] !== '-'
-                            );
-
-                            if (urlIndex !== -1) {
-                                const urls = playlist.map(p =>
-                                    p.url.replace('&preload', '&play')
-                                );
-
-                                log('replacing single URL with array of URLs:', urls);
-
-                                args = [
-                                    ...args.slice(0, urlIndex),
-                                    ...urls,
-                                    ...args.slice(urlIndex + 1)
-                                ];
-
-                                log('patched args:', args);
+                            if (typeof Lampa !== 'undefined' && Lampa.Noty) {
+                                Lampa.Noty.show('Проброшен M3U плейлист TorrServer');
                             }
+                        } else {
+                            log('Не удалось извлечь hash/link из URL:', origUrl);
                         }
+                    } else {
+                        log('URL TorrServer не найден в аргументах');
                     }
                 }
             } catch (e) {
-                log('ERROR in spawn hook:', e.stack || e);
+                log('ОШИБКА:', e.stack || e.message);
             }
 
             return originalSpawn.call(this, command, args, options);
         };
 
         cp.spawn.__playlistPatchApplied = true;
-        log('Патч успешно зарегистрирован!');
 
-    } catch (e) {
-        console.error('[PlaylistPatch Init Error]', e);
-    }
+    } catch (e) {}
 })();
