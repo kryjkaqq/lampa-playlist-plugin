@@ -1,20 +1,6 @@
 (function () {
     'use strict';
 
-    // Функция отправки команд в API TorrServer без CORS-блокировок
-    function sendTorrApi(host, payload) {
-        try {
-            var xhr = new XMLHttpRequest();
-            xhr.open('POST', host + '/viewed', false);
-            // text/plain обходит CORS Preflight (OPTIONS) в браузере,
-            // благодаря чему TorrServer гарантированно получает и исполняет команду
-            xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
-            xhr.send(JSON.stringify(payload));
-        } catch (e) {
-            console.error('TorrServer API Error:', e);
-        }
-    }
-
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
             Lampa.Noty.show('M3U TorrServer: Активен');
@@ -35,22 +21,32 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // 1. Гарантированно очищаем историю просмотров для этого торрента
-                            sendTorrApi(host, { action: 'rem', hash: hash });
+                            // Определяем индекс для TorrServer:
+                            // Чтобы fromlast выдал плейлист НАЧИНАЯ с выбранной серии, 
+                            // последней просмотренной нужно отметить файл ровно перед ней.
+                            // Если выбрана 1-я серия (индекс 0), сбрасываем историю полностью.
+                            try {
+                                var xhr = new XMLHttpRequest();
+                                xhr.open('POST', host + '/viewed', false);
+                                // text/plain обходит CORS-предзапросы в браузере
+                                xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
 
-                            // 2. Если выбрана серия > 1 (индекс > 0), регистрируем предыдущую серию
-                            if (currentFileIndex > 0) {
-                                var targetIndex = currentFileIndex - 1;
-                                sendTorrApi(host, {
-                                    action: 'set',
-                                    hash: hash,
-                                    file_index: targetIndex,
-                                    file: targetIndex,
-                                    index: targetIndex
-                                });
+                                if (currentFileIndex === 0) {
+                                    // Сброс истории для запуска с 1-й серии
+                                    xhr.send(JSON.stringify({ action: 'rem', hash: hash }));
+                                } else {
+                                    // Принудительно перезаписываем индекс в TorrServer (работает и вперед, и назад)
+                                    var targetIndex = currentFileIndex - 1;
+                                    xhr.send(JSON.stringify({
+                                        hash: hash,
+                                        file_index: targetIndex
+                                    }));
+                                }
+                            } catch (e) {
+                                console.error('TorrServer View API Error:', e);
                             }
 
-                            // 3. Отдаем плейлист с отсечкой от зафиксированной точки
+                            // Отдаем чистый URL с флагом &fromlast
                             item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
