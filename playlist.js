@@ -3,7 +3,7 @@
 
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('M3U TorrServer: Авто-режим активен');
+            Lampa.Noty.show('M3U TorrServer: Активен');
         }
 
         if (typeof Lampa !== 'undefined' && Lampa.Player) {
@@ -19,17 +19,42 @@
                         if (hostMatch && hashMatch) {
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
-                            var fileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
-                            var title = item.title ? encodeURIComponent(item.title) : 'playlist';
+                            var targetIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // Формируем M3U с указанием стартового индекса (from) и флага m3u
-                            // TorrServer MatriX обрезает всё, что идёт ДО указанного index/from
-                            var playlistUrl = host + '/stream/' + title + '.m3u?link=' + hash + '&from=' + fileIndex + '&index=' + fileIndex + '&m3u';
+                            // Запрашиваем структуру плейлиста у TorrServer
+                            var rawM3uUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u';
 
-                            item.url = playlistUrl;
+                            var xhr = new XMLHttpRequest();
+                            xhr.open('GET', rawM3uUrl, false);
+                            xhr.send();
 
-                            if (Lampa.Noty) {
-                                Lampa.Noty.show('Плейлист: Серии ' + (fileIndex + 1) + '...');
+                            if (xhr.status === 200 && xhr.responseText) {
+                                var lines = xhr.responseText.split('\n');
+                                var filteredLines = ['#EXTM3U'];
+                                var currentIndex = 0;
+                                var include = false;
+
+                                for (var i = 0; i < lines.length; i++) {
+                                    var line = lines[i].trim();
+
+                                    if (line.indexOf('#EXTINF:') === 0) {
+                                        include = (currentIndex >= targetIndex);
+                                        currentIndex++;
+                                    }
+
+                                    if (include && line !== '#EXTM3U' && line.length > 0) {
+                                        filteredLines.push(line);
+                                    }
+                                }
+
+                                var modifiedM3u = filteredLines.join('\n');
+
+                                // Скачиваем файл локально браузером и отдаем созданный URL
+                                var blob = new Blob([modifiedM3u], { type: 'application/x-mpegurl' });
+                                var fileUrl = URL.createObjectURL(blob);
+
+                                // Для Windows/PotPlayer передаем дата-стрим или временную ссылку
+                                item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&from=' + targetIndex;
                             }
                         }
                     }
