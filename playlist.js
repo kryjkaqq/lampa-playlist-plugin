@@ -26,52 +26,27 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // Шаг 1: Полностью очищаем старую историю просмотров (удаляем мусор вроде застрявшей 6-й серии)
+                            // Если выбрана 1-я серия (индекс 0) — запускаем чистый плейлист без fromlast
+                            if (currentFileIndex === 0) {
+                                executePlay(host, hash, currentFileIndex, false);
+                                return;
+                            }
+
+                            // Если выбрана любая другая серия — устанавливаем точку в TorrServer на предыдущую серию
+                            var targetIndex = currentFileIndex - 1;
                             fetch(host + '/viewed', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ action: "rem", hash: hash, file_index: -1 })
+                                body: JSON.stringify({
+                                    hash: hash,
+                                    file_index: targetIndex,
+                                    timecode: 0
+                                })
                             }).then(function () {
-                                if (currentFileIndex === 0) {
-                                    // Если это 1-я серия — запускаем чистый плейлист без fromlast
-                                    executePlay(false);
-                                } else {
-                                    // Если любая другая — регистрируем предыдущую серию как просмотренную через быстрый запрос
-                                    var targetIndex = currentFileIndex - 1;
-                                    return fetch(host + '/stream/file.mkv?link=' + hash + '&index=' + targetIndex)
-                                        .then(function () {
-                                            executePlay(true);
-                                        })
-                                        .catch(function () {
-                                            executePlay(true);
-                                        });
-                                }
+                                executePlay(host, hash, currentFileIndex, true);
                             }).catch(function () {
-                                executePlay(currentFileIndex > 0);
+                                executePlay(host, hash, currentFileIndex, true);
                             });
-
-                            function executePlay(useFromLast) {
-                                var cleanUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u' + (useFromLast ? '&fromlast' : '');
-
-                                var internalUrl = cleanUrl;
-                                Object.defineProperty(item, 'url', {
-                                    get: function () {
-                                        return internalUrl;
-                                    },
-                                    set: function (val) {
-                                        internalUrl = val ? val.replace(/&play(?=&|$)/g, '') : val;
-                                    },
-                                    configurable: true
-                                });
-
-                                if (Lampa.Noty) {
-                                    Lampa.Noty.show('Запуск с серии №' + (currentFileIndex + 1));
-                                }
-
-                                isHandling = true;
-                                originalPlay.call(Lampa.Player, item);
-                                isHandling = false;
-                            }
 
                             return;
                         }
@@ -82,6 +57,29 @@
 
                 return originalPlay.call(this, item);
             };
+
+            function executePlay(host, hash, currentFileIndex, useFromLast) {
+                var cleanUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u' + (useFromLast ? '&fromlast' : '');
+
+                var internalUrl = cleanUrl;
+                Object.defineProperty(item, 'url', {
+                    get: function () {
+                        return internalUrl;
+                    },
+                    set: function (val) {
+                        internalUrl = val ? val.replace(/&play(?=&|$)/g, '') : val;
+                    },
+                    configurable: true
+                });
+
+                if (Lampa.Noty) {
+                    Lampa.Noty.show('Запуск с серии №' + (currentFileIndex + 1));
+                }
+
+                isHandling = true;
+                originalPlay.call(Lampa.Player, item);
+                isHandling = false;
+            }
         }
     }
 
