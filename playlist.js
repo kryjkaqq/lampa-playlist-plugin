@@ -21,11 +21,11 @@
                             var hash = hashMatch[1];
                             var targetIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // Запрашиваем структуру плейлиста у TorrServer
+                            // 1. Получаем полный M3U от TorrServer
                             var rawM3uUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u';
 
                             var xhr = new XMLHttpRequest();
-                            xhr.open('GET', rawM3uUrl, false);
+                            xhr.open('GET', rawM3uUrl, false); // Синхронный запрос
                             xhr.send();
 
                             if (xhr.status === 200 && xhr.responseText) {
@@ -34,6 +34,7 @@
                                 var currentIndex = 0;
                                 var include = false;
 
+                                // 2. Вырезаем все серии, которые идут ДО выбранной
                                 for (var i = 0; i < lines.length; i++) {
                                     var line = lines[i].trim();
 
@@ -47,14 +48,14 @@
                                     }
                                 }
 
-                                var modifiedM3u = filteredLines.join('\n');
+                                var resultM3u = filteredLines.join('\n');
 
-                                // Скачиваем файл локально браузером и отдаем созданный URL
-                                var blob = new Blob([modifiedM3u], { type: 'application/x-mpegurl' });
-                                var fileUrl = URL.createObjectURL(blob);
+                                // 3. Упаковываем обрезанный плейлист в data-URL, который читает PotPlayer
+                                item.url = 'data:text/plain;charset=utf-8,' + encodeURIComponent(resultM3u);
 
-                                // Для Windows/PotPlayer передаем дата-стрим или временную ссылку
-                                item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&from=' + targetIndex;
+                                if (Lampa.Noty) {
+                                    Lampa.Noty.show('Плейлист: с серии №' + (targetIndex + 1));
+                                }
                             }
                         }
                     }
