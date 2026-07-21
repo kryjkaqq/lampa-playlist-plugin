@@ -26,33 +26,32 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // 1. Формируем структуру запроса истории для TorrServer
-                            var apiData = currentFileIndex === 0 
-                                ? { action: "rem", hash: hash, file_index: -1 } 
-                                : { hash: hash, file_index: currentFileIndex - 1 };
+                            // Точная структура запроса из логов TorrServer
+                            var apiData = {
+                                action: "rem",
+                                hash: hash,
+                                file_index: currentFileIndex === 0 ? -1 : (currentFileIndex - 1)
+                            };
 
-                            // 2. Асинхронно обновляем историю на сервере, затем запускаем
                             fetch(host + '/viewed', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(apiData)
                             }).then(function () {
                                 executePlay();
                             }).catch(function () {
-                                executePlay(); // Фолбэк при сбое сети
+                                executePlay();
                             });
 
                             function executePlay() {
                                 var cleanUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
 
-                                // ЗАЩИТА: перехватываем любые попытки Лампы дописать &play в url
                                 var internalUrl = cleanUrl;
                                 Object.defineProperty(item, 'url', {
                                     get: function () {
                                         return internalUrl;
                                     },
                                     set: function (val) {
-                                        // Если Лампа пытается добавить &play, мы его на лету вырезаем
                                         internalUrl = val ? val.replace(/&play(?=&|$)/g, '') : val;
                                     },
                                     configurable: true
@@ -67,7 +66,7 @@
                                 isHandling = false;
                             }
 
-                            return; // Прерываем выполнение до ответа сети
+                            return;
                         }
                     }
                 } catch (e) {
