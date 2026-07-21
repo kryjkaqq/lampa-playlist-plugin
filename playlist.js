@@ -3,7 +3,7 @@
 
     function startPlugin() {
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('M3U TorrServer: Активен');
+            Lampa.Noty.show('M3U TorrServer (fromlast): Активен');
         }
 
         if (typeof Lampa !== 'undefined' && Lampa.Player) {
@@ -19,19 +19,24 @@
                         if (hostMatch && hashMatch) {
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
-                            var startIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+                            var fileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+                            var title = item.title ? encodeURIComponent(item.title) : 'playlist';
 
-                            // Используем эндпоинт TorrServer /stream/fname.m3u
-                            // Передаем параметры play и index с нужной серии
-                            var fileName = item.title ? encodeURIComponent(item.title) : 'playlist';
-                            
-                            // Формируем чистую короткую HTTP-ссылку
-                            var playlistUrl = host + '/stream/' + fileName + '.m3u?link=' + hash + '&index=' + startIndex + '&play=' + startIndex + '&m3u';
+                            // 1. Мгновенно регистрируем выбранную серию в TorrServer как "последнюю"
+                            var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + fileIndex + '&play';
+                            try {
+                                var xhr = new XMLHttpRequest();
+                                xhr.open('HEAD', pingUrl, false); // Быстрый запрос состояния
+                                xhr.send();
+                            } catch (e) {
+                                // Игнорируем прерывание сети, главное — статус передан на сервер
+                            }
 
-                            item.url = playlistUrl;
+                            // 2. Отдаем в PotPlayer ссылку на M3U с параметром &fromlast
+                            item.url = host + '/stream/' + title + '.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
-                                Lampa.Noty.show('Запуск плейлиста с серии №' + (startIndex + 1));
+                                Lampa.Noty.show('Запуск с серии №' + (fileIndex + 1));
                             }
                         }
                     }
