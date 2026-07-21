@@ -66,9 +66,6 @@
                                 console.error('TorrServer API Sync Error:', err);
                             }
 
-                            if (Lampa.Noty) {
-                                Lampa.Noty.show('Запуск с серии №' + (currentFileIndex + 1));
-                            }
                         }
                     }
                 } catch (e) {
