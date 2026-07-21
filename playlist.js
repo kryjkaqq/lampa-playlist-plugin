@@ -21,23 +21,29 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // Если выбираем 1-ю серию (индекс 0), сдвиг не нужен.
-                            // Для остальных серий отмечаем предыдущую, чтобы fromlast выдал список НАЧИНАЯ с текущей.
-                            var targetIndex = currentFileIndex > 0 ? (currentFileIndex - 1) : 0;
-
-                            // 1. Фиксируем предыдущую серию в TorrServer
-                            var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + targetIndex;
-                            
+                            // 1. Полностью сбрасываем историю просмотров (View States) для этого торрента
                             try {
-                                var xhr = new XMLHttpRequest();
-                                xhr.open('GET', pingUrl, false);
-                                xhr.send();
+                                var resetXhr = new XMLHttpRequest();
+                                resetXhr.open('POST', host + '/viewed', false);
+                                resetXhr.setRequestHeader('Content-Type', 'application/json');
+                                resetXhr.send(JSON.stringify({ action: 'rem', hash: hash }));
                             } catch (e) {
-                                // Игнорируем разрыв
+                                // Игнорируем ошибки сети
                             }
 
-                            // 2. Используем СТРОГО латинское имя файла "playlist.m3u"
-                            // Это на 100% убирает ошибку двойного кодирования (%25D0) в PotPlayer
+                            // 2. Если выбрана серия > 1 (индекс > 0), отмечаем предыдущую, 
+                            // чтобы fromlast отдал плейлист НАЧИНАЯ с выбранной серии.
+                            if (currentFileIndex > 0) {
+                                var targetIndex = currentFileIndex - 1;
+                                var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + targetIndex;
+                                try {
+                                    var pingXhr = new XMLHttpRequest();
+                                    pingXhr.open('GET', pingUrl, false);
+                                    pingXhr.send();
+                                } catch (e) {}
+                            }
+
+                            // 3. Отдаем чистый URL плейлиста
                             item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
