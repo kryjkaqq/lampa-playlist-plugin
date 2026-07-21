@@ -12,19 +12,19 @@
             Lampa.Player.play = function (item) {
                 try {
                     if (item && item.url && (item.url.indexOf('link=') !== -1 || item.url.indexOf('hash=') !== -1)) {
-                        var match = item.url.match(/(https?:\/\/[^\/]+)/);
+                        var hostMatch = item.url.match(/(https?:\/\/[^\/]+)/);
                         var hashMatch = item.url.match(/(?:link|hash)=([a-fA-F0-9]+)/);
 
-                        if (match && hashMatch) {
-                            var host = match[1];
+                        if (hostMatch && hashMatch) {
+                            var host = hostMatch[1];
                             var hash = hashMatch[1];
-                            
-                            // Формируем M3U ссылкой со всеми параметрами (link + hash + title)
                             var title = item.title ? encodeURIComponent(item.title) : 'playlist';
-                            item.url = host + '/playlist.m3u?link=' + hash + '&hash=' + hash + '&title=' + title;
+
+                            // Исправленный адрес эндпоинта TorrServer MatriX
+                            item.url = host + '/stream/' + title + '.m3u?link=' + hash + '&m3u';
 
                             if (Lampa.Noty) {
-                                Lampa.Noty.show('M3U плейлист отправлен');
+                                Lampa.Noty.show('Формируем M3U плейлист...');
                             }
                         }
                     }
