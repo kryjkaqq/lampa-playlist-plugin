@@ -1,39 +1,37 @@
 (function () {
     'use strict';
 
-    function init() {
-        if (window.torrserver_playlist_plugin) return;
-        window.torrserver_playlist_plugin = true;
-
+    function plugin() {
+        // Уведомление при запуске
         if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('Плагин M3U TorrServer подключен');
+            Lampa.Noty.show('M3U Плагин загружен!');
         }
 
-        // Перехватываем метод проигрывания
-        if (Lampa.Player && typeof Lampa.Player.play === 'function') {
-            const originalPlay = Lampa.Player.play;
+        // Перехватываем воспроизведение
+        if (typeof Lampa !== 'undefined' && Lampa.Player) {
+            var originalPlay = Lampa.Player.play;
 
             Lampa.Player.play = function (item) {
                 try {
-                    // Если у воспроизводимого объекта есть URL и он от TorrServer
-                    if (item && item.url && (item.url.includes('link=') || item.url.includes('hash='))) {
-                        const urlObj = new URL(item.url);
-                        const hash = urlObj.searchParams.get('link') || urlObj.searchParams.get('hash');
+                    if (item && item.url && (item.url.indexOf('link=') !== -1 || item.url.indexOf('hash=') !== -1)) {
+                        // Разбираем URL без использования new URL (для старых движков)
+                        var match = item.url.match(/(https?:\/\/[^\/]+)/);
+                        var hashMatch = item.url.match(/(?:link|hash)=([a-fA-F0-9]+)/);
 
-                        if (hash) {
-                            // Формируем M3U-ссылку со всеми сериями
-                            const m3uUrl = urlObj.origin + '/playlist.m3u?hash=' + hash;
-
-                            // Подменяем ссылку
-                            item.url = m3uUrl;
+                        if (match && hashMatch) {
+                            var host = match[1];
+                            var hash = hashMatch[1];
+                            
+                            // Заменяем ссылку на M3U плейлист TorrServer
+                            item.url = host + '/playlist.m3u?hash=' + hash;
 
                             if (Lampa.Noty) {
-                                Lampa.Noty.show('Плейлист TorrServer (M3U) отправлен в плеер');
+                                Lampa.Noty.show('Отправлен M3U плейлист');
                             }
                         }
                     }
                 } catch (e) {
-                    console.error('TorrServer Playlist Error:', e);
+                    console.error('Plugin Error:', e);
                 }
 
                 return originalPlay.call(this, item);
@@ -41,13 +39,13 @@
         }
     }
 
-    // Инициализация как в вашем рабочем примере
+    // Безопасная инициализация
     if (window.appready) {
-        init();
+        plugin();
     } else {
         if (typeof Lampa !== 'undefined' && Lampa.Listener) {
             Lampa.Listener.follow('app', function (e) {
-                if (e.type === 'ready') init();
+                if (e.type === 'ready') plugin();
             });
         }
     }
