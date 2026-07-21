@@ -19,43 +19,20 @@
                         if (hostMatch && hashMatch) {
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
-                            var targetIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+                            
+                            // Забираем индекс, передаваемый Лампой
+                            var rawIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+                            
+                            var title = item.title ? encodeURIComponent(item.title) : 'playlist';
 
-                            // 1. Получаем полный M3U от TorrServer
-                            var rawM3uUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u';
+                            // Формируем чистый HTTP URL плейлиста без data-uri
+                            // Параметр from указывает TorrServer, с какого именно файла отдать плейлист
+                            var playlistUrl = host + '/stream/' + title + '.m3u?link=' + hash + '&from=' + rawIndex + '&m3u';
 
-                            var xhr = new XMLHttpRequest();
-                            xhr.open('GET', rawM3uUrl, false); // Синхронный запрос
-                            xhr.send();
+                            item.url = playlistUrl;
 
-                            if (xhr.status === 200 && xhr.responseText) {
-                                var lines = xhr.responseText.split('\n');
-                                var filteredLines = ['#EXTM3U'];
-                                var currentIndex = 0;
-                                var include = false;
-
-                                // 2. Вырезаем все серии, которые идут ДО выбранной
-                                for (var i = 0; i < lines.length; i++) {
-                                    var line = lines[i].trim();
-
-                                    if (line.indexOf('#EXTINF:') === 0) {
-                                        include = (currentIndex >= targetIndex);
-                                        currentIndex++;
-                                    }
-
-                                    if (include && line !== '#EXTM3U' && line.length > 0) {
-                                        filteredLines.push(line);
-                                    }
-                                }
-
-                                var resultM3u = filteredLines.join('\n');
-
-                                // 3. Упаковываем обрезанный плейлист в data-URL, который читает PotPlayer
-                                item.url = 'data:text/plain;charset=utf-8,' + encodeURIComponent(resultM3u);
-
-                                if (Lampa.Noty) {
-                                    Lampa.Noty.show('Плейлист: с серии №' + (targetIndex + 1));
-                                }
+                            if (Lampa.Noty) {
+                                Lampa.Noty.show('Плейлист с выбранной серии');
                             }
                         }
                     }
