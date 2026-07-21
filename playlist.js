@@ -26,25 +26,32 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // Точная структура запроса из логов TorrServer
-                            var apiData = {
-                                action: "rem",
-                                hash: hash,
-                                file_index: currentFileIndex === 0 ? -1 : (currentFileIndex - 1)
-                            };
-
+                            // Шаг 1: Полностью очищаем старую историю просмотров (удаляем мусор вроде застрявшей 6-й серии)
                             fetch(host + '/viewed', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(apiData)
+                                body: JSON.stringify({ action: "rem", hash: hash, file_index: -1 })
                             }).then(function () {
-                                executePlay();
+                                if (currentFileIndex === 0) {
+                                    // Если это 1-я серия — запускаем чистый плейлист без fromlast
+                                    executePlay(false);
+                                } else {
+                                    // Если любая другая — регистрируем предыдущую серию как просмотренную через быстрый запрос
+                                    var targetIndex = currentFileIndex - 1;
+                                    return fetch(host + '/stream/file.mkv?link=' + hash + '&index=' + targetIndex)
+                                        .then(function () {
+                                            executePlay(true);
+                                        })
+                                        .catch(function () {
+                                            executePlay(true);
+                                        });
+                                }
                             }).catch(function () {
-                                executePlay();
+                                executePlay(currentFileIndex > 0);
                             });
 
-                            function executePlay() {
-                                var cleanUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
+                            function executePlay(useFromLast) {
+                                var cleanUrl = host + '/stream/playlist.m3u?link=' + hash + '&m3u' + (useFromLast ? '&fromlast' : '');
 
                                 var internalUrl = cleanUrl;
                                 Object.defineProperty(item, 'url', {
