@@ -21,6 +21,9 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
+                            var debugLines = [];
+                            debugLines.push('idx=' + currentFileIndex);
+
                             try {
                                 // 1. Получаем текущий список просмотренных индексов для этого hash
                                 var existing = [];
@@ -30,14 +33,16 @@
                                     xhrList.setRequestHeader('Content-Type', 'application/json');
                                     xhrList.send(JSON.stringify({ action: 'list', hash: hash }));
 
+                                    debugLines.push('list:' + xhrList.status + ' ' + (xhrList.responseText || '').substring(0, 120));
+
                                     if (xhrList.status === 200 && xhrList.responseText) {
                                         existing = JSON.parse(xhrList.responseText) || [];
                                     }
                                 } catch (e) {
-                                    console.error('TorrServer viewed list error:', e);
+                                    debugLines.push('list-err:' + e.message);
                                 }
 
-                                // 2. Удаляем каждый найденный индекс по отдельности
+                                // 2. Удаляем КАЖДЫЙ найденный индекс по отдельности
                                 //    (rem работает только точечно, массового сброса нет)
                                 existing.forEach(function (v) {
                                     try {
@@ -49,8 +54,9 @@
                                             hash: hash,
                                             file_index: v.file_index
                                         }));
+                                        debugLines.push('rem ' + v.file_index + ':' + xhrRem.status);
                                     } catch (e) {
-                                        console.error('TorrServer viewed rem error:', e);
+                                        debugLines.push('rem-err:' + e.message);
                                     }
                                 });
 
@@ -58,7 +64,10 @@
                                     // Для 1-й серии просто отдаём полный плейлист
                                     item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u';
                                 } else {
-                                    var targetIndex = currentFileIndex - 1;
+                                    // ВАЖНО: fromlast стартует С ТОГО ЖЕ индекса, что помечен viewed
+                                    // (searchLastPlayed возвращает позицию файла с этим Id, i >= from
+                                    // включает его самого) — сдвиг "-1" тут не нужен.
+                                    var targetIndex = currentFileIndex;
 
                                     var xhrSet = new XMLHttpRequest();
                                     xhrSet.open('POST', host + '/viewed', false);
@@ -69,10 +78,16 @@
                                         file_index: targetIndex
                                     }));
 
+                                    debugLines.push('set ' + targetIndex + ':' + xhrSet.status);
+
                                     item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
                                 }
                             } catch (err) {
-                                console.error('TorrServer API Sync Error:', err);
+                                debugLines.push('fatal-err:' + err.message);
+                            }
+
+                            if (Lampa.Noty) {
+                                Lampa.Noty.show(debugLines.join(' | '));
                             }
 
                             if (Lampa.Noty) {
