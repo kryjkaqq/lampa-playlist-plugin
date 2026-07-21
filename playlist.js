@@ -19,35 +19,29 @@
                         if (hostMatch && hashMatch) {
                             var host = hostMatch[1];
                             var hash = hashMatch[1];
-                            var fileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
+                            var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            // 1. Делаем быстрый запрос к TorrServer, фиксируя ТЕКУЩИЙ index как просматриваемый
-                            var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + fileIndex;
+                            // Если выбираем 1-ю серию (индекс 0), сдвиг не нужен.
+                            // Для остальных серий отмечаем предыдущую, чтобы fromlast выдал список НАЧИНАЯ с текущей.
+                            var targetIndex = currentFileIndex > 0 ? (currentFileIndex - 1) : 0;
+
+                            // 1. Фиксируем предыдущую серию в TorrServer
+                            var pingUrl = host + '/stream/file.mkv?link=' + hash + '&index=' + targetIndex;
                             
                             try {
                                 var xhr = new XMLHttpRequest();
-                                xhr.open('GET', pingUrl, false); // Синхронный короткий пинг
+                                xhr.open('GET', pingUrl, false);
                                 xhr.send();
                             } catch (e) {
-                                // Игнорируем разрыв соединения
+                                // Игнорируем разрыв
                             }
 
-                            // 2. Формируем валидный короткий URL без двойного encodeURIComponent
-                            var cleanTitle = 'playlist';
-                            if (item.title) {
-                                try {
-                                    // Проверяем, не закодирована ли строка уже
-                                    cleanTitle = encodeURIComponent(decodeURIComponent(item.title));
-                                } catch (e) {
-                                    cleanTitle = encodeURIComponent(item.title);
-                                }
-                            }
-
-                            // 3. Отдаем плейлист с &fromlast
-                            item.url = host + '/stream/' + cleanTitle + '.m3u?link=' + hash + '&m3u&fromlast';
+                            // 2. Используем СТРОГО латинское имя файла "playlist.m3u"
+                            // Это на 100% убирает ошибку двойного кодирования (%25D0) в PotPlayer
+                            item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
 
                             if (Lampa.Noty) {
-                                Lampa.Noty.show('Запуск с серии №' + (fileIndex + 1));
+                                Lampa.Noty.show('Запуск с серии №' + (currentFileIndex + 1));
                             }
                         }
                     }
