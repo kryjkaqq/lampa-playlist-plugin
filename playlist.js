@@ -2,10 +2,6 @@
     'use strict';
 
     function startPlugin() {
-        if (typeof Lampa !== 'undefined' && Lampa.Noty) {
-            Lampa.Noty.show('M3U TorrServer: Активен');
-        }
-
         if (typeof Lampa !== 'undefined' && Lampa.Player) {
             var originalPlay = Lampa.Player.play;
 
@@ -21,11 +17,7 @@
                             var hash = hashMatch[1];
                             var currentFileIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
 
-                            var debugLines = [];
-                            debugLines.push('idx=' + currentFileIndex);
-
                             try {
-                                // 1. Получаем текущий список просмотренных индексов для этого hash
                                 var existing = [];
                                 try {
                                     var xhrList = new XMLHttpRequest();
@@ -33,17 +25,12 @@
                                     xhrList.setRequestHeader('Content-Type', 'application/json');
                                     xhrList.send(JSON.stringify({ action: 'list', hash: hash }));
 
-                                    debugLines.push('list:' + xhrList.status + ' ' + (xhrList.responseText || '').substring(0, 120));
-
                                     if (xhrList.status === 200 && xhrList.responseText) {
                                         existing = JSON.parse(xhrList.responseText) || [];
                                     }
                                 } catch (e) {
-                                    debugLines.push('list-err:' + e.message);
+                                    console.error('TorrServer viewed list error:', e);
                                 }
-
-                                // 2. Удаляем КАЖДЫЙ найденный индекс по отдельности
-                                //    (rem работает только точечно, массового сброса нет)
                                 existing.forEach(function (v) {
                                     try {
                                         var xhrRem = new XMLHttpRequest();
@@ -54,19 +41,14 @@
                                             hash: hash,
                                             file_index: v.file_index
                                         }));
-                                        debugLines.push('rem ' + v.file_index + ':' + xhrRem.status);
                                     } catch (e) {
-                                        debugLines.push('rem-err:' + e.message);
+                                        console.error('TorrServer viewed rem error:', e);
                                     }
                                 });
 
                                 if (currentFileIndex === 0) {
-                                    // Для 1-й серии просто отдаём полный плейлист
                                     item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u';
                                 } else {
-                                    // ВАЖНО: fromlast стартует С ТОГО ЖЕ индекса, что помечен viewed
-                                    // (searchLastPlayed возвращает позицию файла с этим Id, i >= from
-                                    // включает его самого) — сдвиг "-1" тут не нужен.
                                     var targetIndex = currentFileIndex;
 
                                     var xhrSet = new XMLHttpRequest();
@@ -78,16 +60,10 @@
                                         file_index: targetIndex
                                     }));
 
-                                    debugLines.push('set ' + targetIndex + ':' + xhrSet.status);
-
                                     item.url = host + '/stream/playlist.m3u?link=' + hash + '&m3u&fromlast';
                                 }
                             } catch (err) {
-                                debugLines.push('fatal-err:' + err.message);
-                            }
-
-                            if (Lampa.Noty) {
-                                Lampa.Noty.show(debugLines.join(' | '));
+                                console.error('TorrServer API Sync Error:', err);
                             }
 
                             if (Lampa.Noty) {
@@ -98,8 +74,6 @@
                 } catch (e) {
                     console.error('Playlist Patch Error:', e);
                 }
-
-                // Гарантированно вырезаем хвостик &play, если Лампа попытается его добавить
                 if (item && item.url) {
                     item.url = item.url.replace(/&play(?=&|$)/g, '');
                 }
