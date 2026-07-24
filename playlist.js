@@ -157,6 +157,11 @@
         var originalPlay = Lampa.Player.play;
 
         Lampa.Player.play = function (item) {
+            // Немедленно глушим предыдущее слежение VLC (если было) —
+            // иначе оно может успеть отправить устаревший индекс прямо
+            // во время очистки/установки нового ниже, и всё собьётся
+            stopVlcTracking();
+
             try {
                 if (item && item.url && (item.url.indexOf('link=') !== -1 || item.url.indexOf('hash=') !== -1)) {
                     var hostMatch = item.url.match(/(https?:\/\/[^\/]+)/);
