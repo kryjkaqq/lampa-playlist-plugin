@@ -87,12 +87,40 @@
         }
     }
 
+    function fetchVlcPlaylistOrder(callback) {
+        var headers = new Headers();
+        headers.append('Authorization', 'Basic ' + btoa(':' + VLC_PASSWORD));
+
+        fetch('http://localhost:' + VLC_PORT + '/requests/playlist.json', { headers: headers })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var flat = [];
+                function walk(node) {
+                    if (!node) return;
+                    if (node.type === 'leaf' && typeof node.id !== 'undefined') flat.push(parseInt(node.id, 10));
+                    if (node.children) node.children.forEach(walk);
+                }
+                walk(data);
+                callback(flat);
+            })
+            .catch(function () { callback([]); });
+    }
+
     // Полноценное отслеживание для VLC через встроенный HTTP-интерфейс
     function startVlcTracking(host, hash, playlist, startIndex, item) {
         stopVlcTracking();
 
         var card = getCard(item);
         var season = getSeasonNumber();
+        var plidToIndex = {};
+
+        // Один раз получаем порядок ID элементов плейлиста VLC и сопоставляем
+        // их с абсолютным номером серии (startIndex — это серия, с которой начали)
+        fetchVlcPlaylistOrder(function (orderedIds) {
+            orderedIds.forEach(function (plid, i) {
+                plidToIndex[plid] = startIndex + i;
+            });
+        });
 
         pollTimer = setInterval(function () {
             var headers = new Headers();
@@ -107,23 +135,9 @@
                     var duration = status.length;
                     var percent = Math.round((currentTime / duration) * 100);
 
-                    // Пытаемся понять, какой именно файл сейчас играет,
-                    // сопоставляя имя файла из VLC с адресами в плейлисте
-                    var playingName = '';
-                    try {
-                        playingName = status.information.category.meta.filename || '';
-                    } catch (e) {}
-
-                    var activeIndex = startIndex;
-
-                    if (playingName && playlist && playlist.length) {
-                        for (var i = 0; i < playlist.length; i++) {
-                            if (playlist[i].url && decodeURIComponent(playlist[i].url).indexOf(playingName) !== -1) {
-                                activeIndex = i;
-                                break;
-                            }
-                        }
-                    }
+                    var activeIndex = plidToIndex.hasOwnProperty(status.currentplid)
+                        ? plidToIndex[status.currentplid]
+                        : startIndex;
 
                     var episodeNum = activeIndex + 1;
 
