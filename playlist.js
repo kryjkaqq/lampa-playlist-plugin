@@ -23,7 +23,9 @@
     function getCard() {
         try {
             var act = Lampa.Activity.active();
-            return (act && act.activity && act.activity.card) ? act.activity.card : null;
+            if (!act) return null;
+            // пробуем оба варианта расположения карточки в объекте активности
+            return act.card || (act.activity && act.activity.card) || null;
         } catch (e) {
             return null;
         }
@@ -39,9 +41,22 @@
 
     // Сохраняет прогресс серии прямо в историю просмотра Lampa
     function markEpisode(card, season, episode, percent, time, duration) {
-        if (!card) return;
+        var debug = [];
+        debug.push('card=' + (card ? (card.title || card.name || card.original_title || card.original_name || '?') : 'NULL'));
+        debug.push('season=' + season, 'ep=' + episode);
+
+        if (!card) {
+            if (Lampa.Noty) Lampa.Noty.show('markEpisode: ' + debug.join(' '));
+            return;
+        }
+
         var hash = episodeHash(card, season, episode);
-        if (!hash) return;
+        debug.push('hash=' + hash);
+
+        if (!hash) {
+            if (Lampa.Noty) Lampa.Noty.show('markEpisode: ' + debug.join(' '));
+            return;
+        }
 
         try {
             Lampa.Timeline.update({
@@ -50,9 +65,12 @@
                 time: time || 0,
                 duration: duration || 0
             });
+            debug.push('OK');
         } catch (e) {
-            console.error('[playlist-plugin] Timeline.update error', e);
+            debug.push('ERR:' + e.message);
         }
+
+        if (Lampa.Noty) Lampa.Noty.show('markEpisode: ' + debug.join(' '));
     }
 
     function pushTorrServerTimecode(host, hash, fileIndex, timecode) {
