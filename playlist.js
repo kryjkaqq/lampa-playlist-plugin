@@ -20,15 +20,17 @@
         return 1;
     }
 
-    function getCard() {
+    function getCard(item) {
+        try {
+            if (item && item.card) return item.card;
+        } catch (e) {}
         try {
             var act = Lampa.Activity.active();
-            if (!act) return null;
-            // пробуем оба варианта расположения карточки в объекте активности
-            return act.card || (act.activity && act.activity.card) || null;
-        } catch (e) {
-            return null;
-        }
+            if (act && act.movie) return act.movie;
+            if (act && act.card) return act.card;
+            if (act && act.activity && act.activity.card) return act.activity.card;
+        } catch (e) {}
+        return null;
     }
 
     function episodeHash(card, season, episode) {
@@ -39,24 +41,15 @@
         }
     }
 
-    // Сохраняет прогресс серии прямо в историю просмотра Lampa
+    // Сохраняет прогресс серии прямо в историю просмотра Lampa.
+    // Возвращает debug-строку вместо отдельного Noty (чтобы не перекрывать другие сообщения)
     function markEpisode(card, season, episode, percent, time, duration) {
-        var debug = [];
-        debug.push('card=' + (card ? (card.title || card.name || card.original_title || card.original_name || '?') : 'NULL'));
-        debug.push('season=' + season, 'ep=' + episode);
+        var tag = 'ep' + episode + ':';
 
-        if (!card) {
-            if (Lampa.Noty) Lampa.Noty.show('markEpisode: ' + debug.join(' '));
-            return;
-        }
+        if (!card) return tag + 'card=NULL';
 
         var hash = episodeHash(card, season, episode);
-        debug.push('hash=' + hash);
-
-        if (!hash) {
-            if (Lampa.Noty) Lampa.Noty.show('markEpisode: ' + debug.join(' '));
-            return;
-        }
+        if (!hash) return tag + 'hash=NULL';
 
         try {
             Lampa.Timeline.update({
@@ -65,12 +58,10 @@
                 time: time || 0,
                 duration: duration || 0
             });
-            debug.push('OK');
+            return tag + 'OK(' + Math.round(percent) + '%)';
         } catch (e) {
-            debug.push('ERR:' + e.message);
+            return tag + 'ERR:' + e.message;
         }
-
-        if (Lampa.Noty) Lampa.Noty.show('markEpisode: ' + debug.join(' '));
     }
 
     function pushTorrServerTimecode(host, hash, fileIndex, timecode) {
@@ -97,10 +88,10 @@
     }
 
     // Полноценное отслеживание для VLC через встроенный HTTP-интерфейс
-    function startVlcTracking(host, hash, playlist, startIndex) {
+    function startVlcTracking(host, hash, playlist, startIndex, item) {
         stopVlcTracking();
 
-        var card = getCard();
+        var card = getCard(item);
         var season = getSeasonNumber();
 
         pollTimer = setInterval(function () {
@@ -165,6 +156,7 @@
 
                         var playerPath = (Lampa.Storage.field('player_nw_path') || '');
                         var vlc = isVlc(playerPath);
+                        var epDebug = [];
 
                         try {
                             // 1. Получаем текущий список просмотренных индексов для этого hash
@@ -186,12 +178,12 @@
                             //    считаем все более ранние серии просмотренными полностью,
                             //    раз ты уже переключился дальше
                             if (!vlc) {
-                                var card0 = getCard();
+                                var card0 = getCard(item);
                                 var season0 = getSeasonNumber();
 
                                 existing.forEach(function (v) {
                                     if (v.file_index < currentFileIndex) {
-                                        markEpisode(card0, season0, v.file_index + 1, 100, 0, 0);
+                                        epDebug.push(markEpisode(card0, season0, v.file_index + 1, 100, 0, 0));
                                     }
                                 });
                             }
@@ -233,7 +225,7 @@
                             // Помечаем текущую серию как "начатую" сразу — чтобы не забыть,
                             // на чём остановился, даже если дальше ничего не отследится
                             if (!vlc) {
-                                markEpisode(getCard(), getSeasonNumber(), currentFileIndex + 1, 1, 0, 0);
+                                epDebug.push(markEpisode(getCard(item), getSeasonNumber(), currentFileIndex + 1, 1, 0, 0));
                             }
 
                             if (vlc) {
@@ -244,7 +236,7 @@
                                 } catch (e) {}
 
                                 setTimeout(function () {
-                                    startVlcTracking(host, hash, playlistData, currentFileIndex);
+                                    startVlcTracking(host, hash, playlistData, currentFileIndex, item);
                                 }, POLL_INTERVAL);
                             }
                         } catch (err) {
@@ -253,8 +245,8 @@
 
                         if (Lampa.Noty) {
                             Lampa.Noty.show(
-                                'Запуск с серии №' + (currentFileIndex + 1) +
-                                (vlc ? ' · слежение за таймкодом включено' : ' · без точного таймкода (не VLC)')
+                                'Серия №' + (currentFileIndex + 1) +
+                                (vlc ? ' · VLC-слежение' : ' · ' + epDebug.join(' | '))
                             );
                         }
                     }
