@@ -94,16 +94,21 @@
         fetch('http://localhost:' + VLC_PORT + '/requests/playlist.json', { headers: headers })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                var flat = [];
+                var map = {};
                 function walk(node) {
                     if (!node) return;
-                    if (node.type === 'leaf' && typeof node.id !== 'undefined') flat.push(parseInt(node.id, 10));
+                    if (node.type === 'leaf' && node.uri) {
+                        try {
+                            var m = decodeURIComponent(node.uri).match(/[?&]index=([0-9]+)/);
+                            if (m) map[node.id] = parseInt(m[1], 10);
+                        } catch (e) {}
+                    }
                     if (node.children) node.children.forEach(walk);
                 }
                 walk(data);
-                callback(flat);
+                callback(map);
             })
-            .catch(function () { callback([]); });
+            .catch(function () { callback({}); });
     }
 
     // Полноценное отслеживание для VLC через встроенный HTTP-интерфейс
@@ -114,12 +119,11 @@
         var season = getSeasonNumber();
         var plidToIndex = {};
 
-        // Один раз получаем порядок ID элементов плейлиста VLC и сопоставляем
-        // их с абсолютным номером серии (startIndex — это серия, с которой начали)
-        fetchVlcPlaylistOrder(function (orderedIds) {
-            orderedIds.forEach(function (plid, i) {
-                plidToIndex[plid] = startIndex + i;
-            });
+        // Один раз получаем карту "ID элемента плейлиста VLC -> реальный номер файла"
+        // (номер зашит прямо в &index= внутри uri каждого элемента, так что это
+        // не зависит от порядка/накопленных старых записей в плейлисте VLC)
+        fetchVlcPlaylistOrder(function (map) {
+            plidToIndex = map;
         });
 
         pollTimer = setInterval(function () {
