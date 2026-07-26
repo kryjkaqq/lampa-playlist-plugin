@@ -282,7 +282,12 @@
             try {
                 if (item && item.url) {
                     var tlKeys = item.timeline ? Object.keys(item.timeline).join(',') : 'NO_TIMELINE';
-                    var combinedMsg = 'season=' + item.season + ' episode=' + item.episode + ' | tl=' + tlKeys;
+                    var realHash = item.timeline ? item.timeline.hash : 'NONE';
+                    var myComputedHash = episodeHash(getCard(item), item.season || getSeasonNumber(), item.episode);
+                    var combinedMsg = 'season=' + item.season + ' episode=' + item.episode +
+                        ' | REAL hash=' + realHash +
+                        ' | MY hash=' + myComputedHash +
+                        ' | MATCH=' + (String(realHash) === String(myComputedHash));
 
                     var idxM = item.url.match(/[?&]index=([0-9]+)/);
                     if (idxM) {
