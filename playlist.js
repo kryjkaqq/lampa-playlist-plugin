@@ -112,8 +112,17 @@
             var nextFile = fetchNextFileFromTorrServer(host, torrentHash, nextIndex);
             if (!nextFile) return null; // следующего файла с таким id нет - серии кончились
 
-            var nextUrl = host + '/stream/' + encodeURIComponent(nextFile.path.split('/').pop()) +
-                '?link=' + torrentHash + '&index=' + nextIndex + '&play';
+            // Берём РАБОЧИЙ url текущей серии и меняем в нём только имя файла
+            // и index= - так сохраняются все остальные параметры (&preload
+            // и т.п.), которые мы не знаем точно, как правильно собрать с нуля
+            var oldNameMatch = item.url.match(/\/stream\/([^?]+)/);
+            var newNameEncoded = encodeURIComponent(nextFile.path.split('/').pop());
+            var nextUrl = item.url;
+
+            if (oldNameMatch) {
+                nextUrl = nextUrl.replace(oldNameMatch[1], newNameEncoded);
+            }
+            nextUrl = nextUrl.replace(/([?&]index=)[0-9]+/, '$1' + nextIndex);
 
             var nextEpisode = (item.episode || 0) + 1;
             var season = item.season || getSeasonNumber();
