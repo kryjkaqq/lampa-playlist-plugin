@@ -98,19 +98,28 @@
 
     function buildNextItem(item) {
         try {
-            if (!item || !item.url) return null;
+            if (!item || !item.url) {
+                try { alert('buildNextItem: нет item или item.url'); } catch (e) {}
+                return null;
+            }
 
             var hostMatch = item.url.match(/(https?:\/\/[^\/]+)/);
             var hashMatch = item.url.match(/(?:link|hash)=([a-fA-F0-9]+)/);
             var idxM = item.url.match(/[?&]index=([0-9]+)/);
-            if (!hostMatch || !hashMatch || !idxM) return null;
+            if (!hostMatch || !hashMatch || !idxM) {
+                try { alert('buildNextItem: не распарсился url: ' + item.url); } catch (e) {}
+                return null;
+            }
 
             var host = hostMatch[1];
             var torrentHash = hashMatch[1];
             var nextIndex = parseInt(idxM[1], 10) + 1;
 
             var nextFile = fetchNextFileFromTorrServer(host, torrentHash, nextIndex);
-            if (!nextFile) return null; // следующего файла с таким id нет - серии кончились
+            if (!nextFile) {
+                try { alert('buildNextItem: файл с id=' + nextIndex + ' НЕ найден в TorrServer'); } catch (e) {}
+                return null;
+            }
 
             // Берём РАБОЧИЙ url текущей серии и меняем в нём только имя файла
             // и index= - так сохраняются все остальные параметры (&preload
@@ -210,7 +219,7 @@
     // onFinish вызывается САМИМ этим модулем, когда видит idle-active=true
     // (mpv.net не закрывает процесс сам по себе даже с --keep-open=no,
     // поэтому ждать child.on('close') для него бессмысленно)
-    function watchMpv(pipeName, onFinish) {
+    function watchMpv(pipeName, hash, onFinish) {
         var net = require('net');
         var socket = null;
         var poll = null;
@@ -227,6 +236,8 @@
         function updatePercent() {
             if (timePos !== null && duration !== null && duration > 0) {
                 lastKnownPercent = Math.round((timePos / duration) * 100);
+                // Пишем прогресс в Lampa прямо во время просмотра
+                updateTimeline(hash, lastKnownPercent, timePos, duration);
             }
         }
 
@@ -243,7 +254,10 @@
         }
 
         function tryConnect(attemptsLeft) {
-            if (attemptsLeft <= 0) return;
+            if (attemptsLeft <= 0) {
+                try { alert('MPV IPC: не удалось переподключиться (' + pipeName + ')'); } catch (e) {}
+                return;
+            }
 
             socket = net.connect(pipeName, function () {
                 poll = setInterval(function () {
@@ -274,6 +288,7 @@
                         if (msg && msg.request_id === IDLE_REQ_ID && msg.data === true && !finished) {
                             finished = true;
                             var state = { percent: lastKnownPercent, time: timePos || 0, duration: duration || 0 };
+                            try { alert('MPV idle-active сработал: percent=' + state.percent); } catch (e) {}
                             cleanup();
                             onFinish(state);
                         }
@@ -379,6 +394,10 @@
 
                 var child = origSpawn.call(this, path, finalArgs, options);
 
+                try {
+                    alert('SPAWN args: ' + JSON.stringify(finalArgs));
+                } catch (e) {}
+
                 if (!vlc && !mpv) {
                     // Плеер без API (PotPlayer и т.п.) - реального таймкода
                     // не знаем, ничего не отслеживаем и не переключаем
@@ -417,7 +436,7 @@
                 if (mpv) {
                     // mpv.net не закрывает процесс сам по себе даже с
                     // --keep-open=no - ловим окончание через idle-active в IPC
-                    watchMpv(mpvPipe, function (state) {
+                    watchMpv(mpvPipe, episodeHashAtLaunch, function (state) {
                         handleFinish(state);
                     });
                 }
