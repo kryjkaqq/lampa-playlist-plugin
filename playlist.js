@@ -239,9 +239,13 @@
                     computeEpisodeNum(item, item.url, true);
 
                     if (Lampa.Noty) {
-                        var keys = item ? Object.keys(item).join(',') : 'NULL';
-                        var title = item.title || item.name || '';
-                        Lampa.Noty.show('KEYS: ' + keys + ' | title=' + title);
+                        var tlKeys = item.timeline ? Object.keys(item.timeline).join(',') : 'NO_TIMELINE';
+                        var tlVal = item.timeline ? JSON.stringify(item.timeline).substring(0, 200) : 'NULL';
+                        Lampa.Noty.show(
+                            'season=' + item.season + ' episode=' + item.episode +
+                            ' | timeline keys=' + tlKeys +
+                            ' | timeline=' + tlVal
+                        );
                     }
                 }
             } catch (e) {}
