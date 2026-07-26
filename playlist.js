@@ -281,23 +281,19 @@
 
             try {
                 if (item && item.url) {
-                    computeEpisodeNum(item, item.url, false);
+                    var tlKeys = item.timeline ? Object.keys(item.timeline).join(',') : 'NO_TIMELINE';
+                    var combinedMsg = 'season=' + item.season + ' episode=' + item.episode + ' | tl=' + tlKeys;
 
-                    if (Lampa.Noty) {
-                        var tlKeys = item.timeline ? Object.keys(item.timeline).join(',') : 'NO_TIMELINE';
-                        var combinedMsg = 'season=' + item.season + ' episode=' + item.episode + ' | tl=' + tlKeys;
-
-                        var idxM = item.url.match(/[?&]index=([0-9]+)/);
-                        if (idxM) {
-                            var curIdx = parseInt(idxM[1], 10);
-                            var hypotheticalNextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + (curIdx + 1));
-                            combinedMsg += ' || NEXT(idx+1)=' + hypotheticalNextUrl;
-                        } else {
-                            combinedMsg += ' || NO index= IN URL';
-                        }
-
-                        Lampa.Noty.show(combinedMsg);
+                    var idxM = item.url.match(/[?&]index=([0-9]+)/);
+                    if (idxM) {
+                        var curIdx = parseInt(idxM[1], 10);
+                        var hypotheticalNextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + (curIdx + 1));
+                        combinedMsg += ' || NEXT(idx+1)=' + hypotheticalNextUrl;
+                    } else {
+                        combinedMsg += ' || NO index= IN URL';
                     }
+
+                    alert(combinedMsg);
                 }
             } catch (e) {}
 
