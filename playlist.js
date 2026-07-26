@@ -327,10 +327,10 @@
 
                 if (mpv) {
                     var resumeSecMpv = Math.floor(lastResumeSeconds || 0);
-                    var argsWithResume = finalArgs;
+                    var argsWithResume = finalArgs.concat(['--keep-open=no']);
 
                     if (resumeSecMpv > 0) {
-                        argsWithResume = ['--start=' + resumeSecMpv].concat(finalArgs);
+                        argsWithResume = ['--start=' + resumeSecMpv].concat(argsWithResume);
                     }
 
                     var patched = patchArgsForMpv(argsWithResume);
