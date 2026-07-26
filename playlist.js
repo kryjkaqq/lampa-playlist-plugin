@@ -172,6 +172,9 @@
         function updatePercent() {
             if (timePos !== null && duration !== null && duration > 0) {
                 lastKnownPercent = Math.round((timePos / duration) * 100);
+                // Пишем прогресс в Lampa прямо во время просмотра — как это
+                // нативно делает встроенный опрос Lampa для VLC
+                updateTimeline(item, url, lastKnownPercent, timePos, duration);
             }
         }
 
@@ -192,8 +195,8 @@
                 if (Lampa.Noty) Lampa.Noty.show('MPV IPC: подключено');
 
                 poll = setInterval(function () {
-                    requestProp('time-pos', TIME_REQ_ID);
                     requestProp('duration', DUR_REQ_ID);
+                    requestProp('time-pos', TIME_REQ_ID);
                 }, 4000);
             });
 
@@ -206,14 +209,15 @@
                     if (!line.trim()) return;
                     try {
                         var msg = JSON.parse(line);
-                        if (msg && msg.request_id === TIME_REQ_ID && typeof msg.data === 'number') {
-                            timePos = msg.data;
+
+                        if (msg && msg.request_id === DUR_REQ_ID) {
+                            if (typeof msg.data === 'number') duration = msg.data;
+                            updatePercent();
+                        }
+                        if (msg && msg.request_id === TIME_REQ_ID) {
+                            if (typeof msg.data === 'number') timePos = msg.data;
                             updatePercent();
                             if (Lampa.Noty) Lampa.Noty.show('MPV: time=' + timePos + ' dur=' + duration + ' percent=' + lastKnownPercent);
-                        }
-                        if (msg && msg.request_id === DUR_REQ_ID && typeof msg.data === 'number') {
-                            duration = msg.data;
-                            updatePercent();
                         }
                     } catch (e) {}
                 });
