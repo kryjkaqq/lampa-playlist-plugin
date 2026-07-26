@@ -278,6 +278,10 @@
                     // домножив секунды на 1000 (как будто это миллисекунды),
                     // из-за чего VLC получает время далеко за пределами видео
                     // и просто стартует с начала. Правим на лету.
+                    var rawStartTimeArg = finalArgs.filter(function (a) {
+                        return typeof a === 'string' && a.indexOf('--start-time=') === 0;
+                    })[0];
+
                     finalArgs = finalArgs.map(function (a) {
                         if (typeof a === 'string' && a.indexOf('--start-time=') === 0) {
                             var ms = parseInt(a.split('=')[1], 10) || 0;
@@ -285,6 +289,14 @@
                         }
                         return a;
                     });
+
+                    var fixedStartTimeArg = finalArgs.filter(function (a) {
+                        return typeof a === 'string' && a.indexOf('--start-time=') === 0;
+                    })[0];
+
+                    if (Lampa.Noty) {
+                        Lampa.Noty.show('spawn: raw=' + rawStartTimeArg + ' -> fixed=' + fixedStartTimeArg);
+                    }
                 }
 
                 if (mpv) {
