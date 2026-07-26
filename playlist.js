@@ -183,9 +183,14 @@
         }
 
         function tryConnect(attemptsLeft) {
-            if (attemptsLeft <= 0) return;
+            if (attemptsLeft <= 0) {
+                if (Lampa.Noty) Lampa.Noty.show('MPV IPC: не удалось подключиться к ' + pipeName);
+                return;
+            }
 
             socket = net.connect(pipeName, function () {
+                if (Lampa.Noty) Lampa.Noty.show('MPV IPC: подключено');
+
                 poll = setInterval(function () {
                     requestProp('time-pos', TIME_REQ_ID);
                     requestProp('duration', DUR_REQ_ID);
@@ -204,6 +209,7 @@
                         if (msg && msg.request_id === TIME_REQ_ID && typeof msg.data === 'number') {
                             timePos = msg.data;
                             updatePercent();
+                            if (Lampa.Noty) Lampa.Noty.show('MPV: time=' + timePos + ' dur=' + duration + ' percent=' + lastKnownPercent);
                         }
                         if (msg && msg.request_id === DUR_REQ_ID && typeof msg.data === 'number') {
                             duration = msg.data;
@@ -213,7 +219,8 @@
                 });
             });
 
-            socket.on('error', function () {
+            socket.on('error', function (err) {
+                if (Lampa.Noty) Lampa.Noty.show('MPV IPC error: ' + (err && err.message) + ', попытка ' + attemptsLeft);
                 try { socket.destroy(); } catch (e) {}
                 setTimeout(function () { tryConnect(attemptsLeft - 1); }, 700);
             });
@@ -353,6 +360,10 @@
                 try {
                     child.on('close', function () {
                         var state = getStateOnClose ? getStateOnClose() : { percent: 0, time: 0, duration: 0 };
+
+                        if (Lampa.Noty) {
+                            Lampa.Noty.show('CLOSE: percent=' + state.percent + ' time=' + state.time + ' duration=' + state.duration + ' (порог=' + FINISH_THRESHOLD_PERCENT + ')');
+                        }
 
                         if (state.percent < FINISH_THRESHOLD_PERCENT) {
                             // Закрыл раньше конца — ничего не трогаем и не
