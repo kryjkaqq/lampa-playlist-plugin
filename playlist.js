@@ -284,25 +284,22 @@
 
             try {
                 if (item && item.url) {
-                    computeEpisodeNum(item, item.url, true);
+                    computeEpisodeNum(item, item.url, false);
 
                     if (Lampa.Noty) {
                         var tlKeys = item.timeline ? Object.keys(item.timeline).join(',') : 'NO_TIMELINE';
-                        var tlVal = item.timeline ? JSON.stringify(item.timeline).substring(0, 200) : 'NULL';
-                        Lampa.Noty.show(
-                            'season=' + item.season + ' episode=' + item.episode +
-                            ' | timeline keys=' + tlKeys +
-                            ' | timeline=' + tlVal
-                        );
+                        var combinedMsg = 'season=' + item.season + ' episode=' + item.episode + ' | tl=' + tlKeys;
 
-                        // Проверка гипотезы: если просто увеличить index=N в
-                        // текущем url на 1, получим ли мы URL следующей серии?
                         var idxM = item.url.match(/[?&]index=([0-9]+)/);
                         if (idxM) {
                             var curIdx = parseInt(idxM[1], 10);
                             var hypotheticalNextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + (curIdx + 1));
-                            Lampa.Noty.show('HYPOTHETICAL next url (index+1): ' + hypotheticalNextUrl);
+                            combinedMsg += ' || NEXT(idx+1)=' + hypotheticalNextUrl;
+                        } else {
+                            combinedMsg += ' || NO index= IN URL';
                         }
+
+                        Lampa.Noty.show(combinedMsg);
                     }
                 }
             } catch (e) {}
