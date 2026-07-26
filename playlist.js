@@ -257,6 +257,18 @@
         Lampa.Player.play = function (item) {
             lastPlayItem = item;
 
+            try {
+                if (item) {
+                    alert(
+                        'id=' + item.id +
+                        ' | path=' + item.path +
+                        ' | fname=' + item.fname +
+                        ' | season=' + item.season + ' episode=' + item.episode +
+                        ' | url=' + item.url
+                    );
+                }
+            } catch (e) {}
+
             // Берём сохранённый таймкод НАПРЯМУЮ из хранилища Lampa по хэшу
             try {
                 var hash = item && item.timeline && item.timeline.hash;
