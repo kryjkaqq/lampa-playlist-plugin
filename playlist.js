@@ -37,6 +37,7 @@
         return null;
     }
 
+    // Подтверждено сверкой с реальным item.timeline.hash - формула верна
     function episodeHash(card, season, episode) {
         try {
             return Lampa.Utils.hash([season, season > 10 ? ':' : '', episode, card.original_name || card.original_title].join(''));
@@ -45,48 +46,9 @@
         }
     }
 
-    // Сырой index=N из TorrServer -> реальная позиция серии в собственном
-    // списке серий Lampa (0-based). Сырой index может быть сдвинут посторонними
-    // файлами в раздаче (обложки, nfo и т.п.), поэтому напрямую его использовать нельзя.
-    function buildIndexToEpisodeMap(item) {
-        var map = {};
+    function updateTimeline(hash, percent, time, duration) {
         try {
-            if (item && Array.isArray(item.playlist)) {
-                item.playlist.forEach(function (p, pos) {
-                    var m = (p.url || '').match(/[?&]index=([0-9]+)/);
-                    if (m) map[parseInt(m[1], 10)] = pos;
-                });
-            }
-        } catch (e) {}
-        return map;
-    }
-
-    function computeEpisodeNum(item, url, debug) {
-        var indexMatch = (url || '').match(/[?&]index=([0-9]+)/);
-        var rawIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
-        var map = buildIndexToEpisodeMap(item);
-        var mapSize = Object.keys(map).length;
-        var pos = map.hasOwnProperty(rawIndex) ? map[rawIndex] : rawIndex;
-
-        if (debug && Lampa.Noty) {
-            Lampa.Noty.show(
-                'DEBUG raw=' + rawIndex +
-                ' playlist.len=' + (item && Array.isArray(item.playlist) ? item.playlist.length : 'NO_PLAYLIST') +
-                ' map.size=' + mapSize +
-                ' inMap=' + map.hasOwnProperty(rawIndex) +
-                ' pos=' + pos +
-                ' ep=' + (pos + 1)
-            );
-        }
-
-        return pos + 1;
-    }
-
-    function updateTimeline(item, url, percent, time, duration) {
-        try {
-            var hash = item && item.timeline && item.timeline.hash;
             if (!hash) return;
-
             Lampa.Timeline.update({
                 hash: hash,
                 percent: Math.max(0, Math.min(100, Math.round(percent))),
@@ -106,23 +68,65 @@
         return args.length ? args[args.length - 1] : '';
     }
 
-    function tryNext() {
+    // Строим объект следующего эпизода сами - у Lampa нет своего "playlist"
+    // в сценарии просмотра файлов торрента (PlayerPlaylist.canNext() всегда
+    // false тут), так что штатный переход неприменим.
+    function buildNextItem(item) {
         try {
-            var can = Lampa.PlayerPlaylist.canNext();
-            if (Lampa.Noty) Lampa.Noty.show('tryNext: canNext=' + can);
+            if (!item || !item.url) return null;
 
-            if (can) {
-                Lampa.PlayerPlaylist.next();
+            var idxM = item.url.match(/[?&]index=([0-9]+)/);
+            if (!idxM) return null;
+
+            var nextIndex = parseInt(idxM[1], 10) + 1;
+            var nextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + nextIndex);
+            var nextEpisode = (item.episode || 0) + 1;
+            var season = item.season || getSeasonNumber();
+            var card = getCard(item);
+            var nextHash = episodeHash(card, season, nextEpisode);
+
+            var savedProgress = null;
+            try {
+                if (nextHash && Lampa.Timeline && Lampa.Timeline.view) {
+                    savedProgress = Lampa.Timeline.view(nextHash);
+                }
+            } catch (e) {}
+
+            var nextItem = {};
+            for (var k in item) {
+                if (Object.prototype.hasOwnProperty.call(item, k)) nextItem[k] = item[k];
             }
+            nextItem.url = nextUrl;
+            nextItem.episode = nextEpisode;
+            nextItem.timeline = {
+                hash: nextHash,
+                percent: savedProgress ? savedProgress.percent : 0,
+                time: savedProgress ? savedProgress.time : 0,
+                duration: savedProgress ? savedProgress.duration : 0,
+                profile: savedProgress ? savedProgress.profile : 0
+            };
+
+            return nextItem;
         } catch (e) {
-            console.error('[playlist-plugin] PlayerPlaylist.next error', e);
-            if (Lampa.Noty) Lampa.Noty.show('tryNext error: ' + e.message);
+            console.error('[playlist-plugin] buildNextItem error', e);
+            return null;
+        }
+    }
+
+    function openNext(item) {
+        var next = buildNextItem(item);
+        if (!next) return;
+
+        try {
+            Lampa.Player.play(next);
+        } catch (e) {
+            console.error('[playlist-plugin] openNext error', e);
         }
     }
 
     // ---------- VLC: слежение через встроенный HTTP-интерфейс ----------
 
-    function watchVlc(item, url, onClose) {
+    function watchVlc(onClose) {
         var lastKnownPercent = 0;
         var lastKnownTime = 0;
         var lastKnownDuration = 0;
@@ -157,26 +161,26 @@
         return { args: newArgs, pipeName: pipeName };
     }
 
-    function watchMpv(pipeName, item, url, onClose) {
+    // onFinish вызывается САМИМ этим модулем, когда видит idle-active=true
+    // (mpv.net не закрывает процесс сам по себе даже с --keep-open=no,
+    // поэтому ждать child.on('close') для него бессмысленно)
+    function watchMpv(pipeName, onFinish) {
         var net = require('net');
-        var lastKnownPercent = 0;
         var socket = null;
         var poll = null;
         var buffer = '';
+        var finished = false;
 
         var TIME_REQ_ID = 1001;
         var DUR_REQ_ID = 1002;
-        var EOF_REQ_ID = 1003;
         var IDLE_REQ_ID = 1004;
         var timePos = null;
         var duration = null;
+        var lastKnownPercent = 0;
 
         function updatePercent() {
             if (timePos !== null && duration !== null && duration > 0) {
                 lastKnownPercent = Math.round((timePos / duration) * 100);
-                // Пишем прогресс в Lampa прямо во время просмотра — как это
-                // нативно делает встроенный опрос Lampa для VLC
-                updateTimeline(item, url, lastKnownPercent, timePos, duration);
             }
         }
 
@@ -187,17 +191,18 @@
             } catch (e) {}
         }
 
+        function cleanup() {
+            if (poll) clearInterval(poll);
+            if (socket) { try { socket.destroy(); } catch (e) {} }
+        }
+
         function tryConnect(attemptsLeft) {
-            if (attemptsLeft <= 0) {
-                if (Lampa.Noty) Lampa.Noty.show('MPV IPC: не удалось подключиться к ' + pipeName);
-                return;
-            }
+            if (attemptsLeft <= 0) return;
 
             socket = net.connect(pipeName, function () {
                 poll = setInterval(function () {
                     requestProp('duration', DUR_REQ_ID);
                     requestProp('time-pos', TIME_REQ_ID);
-                    requestProp('eof-reached', EOF_REQ_ID);
                     requestProp('idle-active', IDLE_REQ_ID);
                 }, 4000);
             });
@@ -220,18 +225,17 @@
                             if (typeof msg.data === 'number') timePos = msg.data;
                             updatePercent();
                         }
-                        if (msg && msg.request_id === EOF_REQ_ID) {
-                            // debug отключен на время теста
-                        }
-                        if (msg && msg.request_id === IDLE_REQ_ID) {
-                            // debug отключен на время теста
+                        if (msg && msg.request_id === IDLE_REQ_ID && msg.data === true && !finished) {
+                            finished = true;
+                            var state = { percent: lastKnownPercent, time: timePos || 0, duration: duration || 0 };
+                            cleanup();
+                            onFinish(state);
                         }
                     } catch (e) {}
                 });
             });
 
-            socket.on('error', function (err) {
-                if (Lampa.Noty) Lampa.Noty.show('MPV IPC error: ' + (err && err.message) + ', попытка ' + attemptsLeft);
+            socket.on('error', function () {
                 try { socket.destroy(); } catch (e) {}
                 setTimeout(function () { tryConnect(attemptsLeft - 1); }, 700);
             });
@@ -239,11 +243,7 @@
 
         tryConnect(6);
 
-        onClose(function () {
-            if (poll) clearInterval(poll);
-            if (socket) { try { socket.destroy(); } catch (e) {} }
-            return { percent: lastKnownPercent, time: timePos || 0, duration: duration || 0 };
-        });
+        return { cleanup: cleanup };
     }
 
     function startPlugin() {
@@ -251,22 +251,19 @@
             console.warn('[playlist-plugin] нет доступа к require, автопереход недоступен');
             return;
         }
-        if (typeof Lampa === 'undefined' || !Lampa.Player || !Lampa.PlayerPlaylist) return;
+        if (typeof Lampa === 'undefined' || !Lampa.Player) return;
 
         var originalPlay = Lampa.Player.play;
         Lampa.Player.play = function (item) {
             lastPlayItem = item;
 
-            // Берём сохранённый таймкод НАПРЯМУЮ из хранилища Lampa по хэшу —
-            // item.timeline.time ненадёжен (может быть 0 даже если прогресс
-            // реально сохранён), а Timeline.view(hash) читает актуальные данные
+            // Берём сохранённый таймкод НАПРЯМУЮ из хранилища Lampa по хэшу
             try {
                 var hash = item && item.timeline && item.timeline.hash;
                 if (hash && Lampa.Timeline && Lampa.Timeline.view) {
                     var saved = Lampa.Timeline.view(hash);
-                    // Если серия уже досмотрена почти до конца - не пытаемся
-                    // резюмировать буквально с конца файла (плеер с флагом
-                    // "закрыться по окончании" тут же выйдет обратно)
+                    // Если серия уже досмотрена почти до конца - не резюмируем
+                    // буквально с конца файла (плеер тут же выйдет обратно)
                     if (saved && saved.percent >= 95) {
                         lastResumeSeconds = 0;
                     } else {
@@ -279,29 +276,6 @@
                 lastResumeSeconds = 0;
             }
 
-            try {
-                if (item && item.url) {
-                    var tlKeys = item.timeline ? Object.keys(item.timeline).join(',') : 'NO_TIMELINE';
-                    var realHash = item.timeline ? item.timeline.hash : 'NONE';
-                    var myComputedHash = episodeHash(getCard(item), item.season || getSeasonNumber(), item.episode);
-                    var combinedMsg = 'season=' + item.season + ' episode=' + item.episode +
-                        ' | REAL hash=' + realHash +
-                        ' | MY hash=' + myComputedHash +
-                        ' | MATCH=' + (String(realHash) === String(myComputedHash));
-
-                    var idxM = item.url.match(/[?&]index=([0-9]+)/);
-                    if (idxM) {
-                        var curIdx = parseInt(idxM[1], 10);
-                        var hypotheticalNextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + (curIdx + 1));
-                        combinedMsg += ' || NEXT(idx+1)=' + hypotheticalNextUrl;
-                    } else {
-                        combinedMsg += ' || NO index= IN URL';
-                    }
-
-                    alert(combinedMsg);
-                }
-            } catch (e) {}
-
             return originalPlay.call(this, item);
         };
 
@@ -309,8 +283,6 @@
             var cp = require('child_process');
 
             if (cp.spawn.__lampaPlaylistPatched) {
-                // Уже пропатчено этим же плагином раньше в этой сессии —
-                // не патчим повторно, иначе close-обработчик задвоится
                 return;
             }
 
@@ -321,15 +293,15 @@
                 var mpv = isMpv(path);
                 var itemAtLaunch = lastPlayItem;
                 var url = extractUrl(args);
+                var episodeHashAtLaunch = itemAtLaunch && itemAtLaunch.timeline ? itemAtLaunch.timeline.hash : null;
 
                 var finalArgs = args;
                 var mpvPipe = null;
 
                 if (vlc && Array.isArray(finalArgs)) {
-                    // Lampa к моменту запуска VLC уже где-то теряет/обнуляет
-                    // сохранённый таймкод (--start-time приходит около нуля).
-                    // Подставляем вместо него значение, снятое нами раньше,
-                    // сразу при клике на серию — пока оно ещё было верным.
+                    // Lampa к моменту запуска VLC теряет сохранённый таймкод
+                    // (--start-time приходит около нуля). Подставляем вместо
+                    // него значение, снятое нами раньше при клике на серию.
                     var resumeSec = Math.floor(lastResumeSeconds || 0);
                     var hadStartTimeArg = false;
 
@@ -344,10 +316,6 @@
                     if (!hadStartTimeArg && resumeSec > 0) {
                         finalArgs.unshift('--start-time=' + resumeSec);
                     }
-
-                    if (Lampa.Noty) {
-                        Lampa.Noty.show('VLC resume: --start-time=' + resumeSec + ' сек');
-                    }
                 }
 
                 if (mpv) {
@@ -361,47 +329,51 @@
                     var patched = patchArgsForMpv(argsWithResume);
                     finalArgs = patched.args;
                     mpvPipe = patched.pipeName;
-
-                    // debug MPV resume отключен на время теста
                 }
 
                 var child = origSpawn.call(this, path, finalArgs, options);
 
                 if (!vlc && !mpv) {
-                    // Плеер без API (PotPlayer и т.п.) — реального таймкода
+                    // Плеер без API (PotPlayer и т.п.) - реального таймкода
                     // не знаем, ничего не отслеживаем и не переключаем
                     return child;
                 }
 
-                var getStateOnClose = null;
+                function handleFinish(state) {
+                    if (state.percent < FINISH_THRESHOLD_PERCENT) {
+                        // Закрыл раньше конца - ничего не трогаем и не
+                        // переключаем серию сами
+                        return;
+                    }
 
-                function onCloseRegister(fn) { getStateOnClose = fn; }
+                    // Досмотрел до конца - фиксируем 100%, время равно
+                    // длительности (не нулю, чтобы не портить данные)
+                    updateTimeline(episodeHashAtLaunch, 100, state.duration, state.duration);
+                    openNext(itemAtLaunch);
+                }
 
-                if (vlc) watchVlc(itemAtLaunch, url, onCloseRegister);
-                if (mpv) watchMpv(mpvPipe, itemAtLaunch, url, onCloseRegister);
+                if (vlc) {
+                    // У VLC есть --play-and-exit, процесс сам корректно
+                    // закрывается по окончании - используем событие close
+                    var getStateOnClose = null;
+                    watchVlc(function (fn) { getStateOnClose = fn; });
 
-                try {
-                    child.on('close', function () {
-                        var state = getStateOnClose ? getStateOnClose() : { percent: 0, time: 0, duration: 0 };
+                    try {
+                        child.on('close', function () {
+                            var state = getStateOnClose ? getStateOnClose() : { percent: 0, time: 0, duration: 0 };
+                            handleFinish(state);
+                        });
+                    } catch (e) {
+                        console.error('[playlist-plugin] spawn close hook error', e);
+                    }
+                }
 
-                        if (Lampa.Noty) {
-                            Lampa.Noty.show('CLOSE: percent=' + state.percent + ' time=' + state.time + ' duration=' + state.duration + ' (порог=' + FINISH_THRESHOLD_PERCENT + ')');
-                        }
-
-                        if (state.percent < FINISH_THRESHOLD_PERCENT) {
-                            // Закрыл раньше конца — ничего не трогаем и не
-                            // переключаем серию сами
-                            return;
-                        }
-
-                        // Досмотрел до конца — фиксируем 100%, время ставим
-                        // равным длительности (а не нулю), чтобы не портить
-                        // ранее сохранённые данные фиктивным сбросом
-                        updateTimeline(itemAtLaunch, url, 100, state.duration, state.duration);
-                        tryNext();
+                if (mpv) {
+                    // mpv.net не закрывает процесс сам по себе даже с
+                    // --keep-open=no - ловим окончание через idle-active в IPC
+                    watchMpv(mpvPipe, function (state) {
+                        handleFinish(state);
                     });
-                } catch (e) {
-                    console.error('[playlist-plugin] spawn close hook error', e);
                 }
 
                 return child;
