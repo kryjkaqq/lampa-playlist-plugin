@@ -239,13 +239,17 @@
         Lampa.Player.play = function (item) {
             lastPlayItem = item;
 
-            // Снимаем таймкод СРАЗУ, пока Lampa ещё не успела его сбросить
-            // (замечено: к моменту реального запуска VLC data.timeline.time
-            // почему-то уже около нуля, хотя тут ещё содержит верное значение)
+            // Берём сохранённый таймкод НАПРЯМУЮ из хранилища Lampa по хэшу —
+            // item.timeline.time ненадёжен (может быть 0 даже если прогресс
+            // реально сохранён), а Timeline.view(hash) читает актуальные данные
             try {
-                lastResumeSeconds = (item && item.timeline && typeof item.timeline.time === 'number')
-                    ? item.timeline.time
-                    : 0;
+                var hash = item && item.timeline && item.timeline.hash;
+                if (hash && Lampa.Timeline && Lampa.Timeline.view) {
+                    var saved = Lampa.Timeline.view(hash);
+                    lastResumeSeconds = (saved && typeof saved.time === 'number') ? saved.time : 0;
+                } else {
+                    lastResumeSeconds = 0;
+                }
             } catch (e) {
                 lastResumeSeconds = 0;
             }
