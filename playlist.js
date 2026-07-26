@@ -2,6 +2,7 @@
     'use strict';
 
     var lastPlayItem = null;
+    var lastResumeSeconds = 0;
     var VLC_PORT = 3999;
     var VLC_PASSWORD = '123456';
     var FINISH_THRESHOLD_PERCENT = 92; // если досмотрел хотя бы досюда - считаем законченным
@@ -234,6 +235,17 @@
         Lampa.Player.play = function (item) {
             lastPlayItem = item;
 
+            // Снимаем таймкод СРАЗУ, пока Lampa ещё не успела его сбросить
+            // (замечено: к моменту реального запуска VLC data.timeline.time
+            // почему-то уже около нуля, хотя тут ещё содержит верное значение)
+            try {
+                lastResumeSeconds = (item && item.timeline && typeof item.timeline.time === 'number')
+                    ? item.timeline.time
+                    : 0;
+            } catch (e) {
+                lastResumeSeconds = 0;
+            }
+
             try {
                 if (item && item.url) {
                     computeEpisodeNum(item, item.url, true);
@@ -274,28 +286,27 @@
                 var mpvPipe = null;
 
                 if (vlc && Array.isArray(finalArgs)) {
-                    // Фикс бага самой Lampa: она передаёт --start-time в VLC,
-                    // домножив секунды на 1000 (как будто это миллисекунды),
-                    // из-за чего VLC получает время далеко за пределами видео
-                    // и просто стартует с начала. Правим на лету.
-                    var rawStartTimeArg = finalArgs.filter(function (a) {
-                        return typeof a === 'string' && a.indexOf('--start-time=') === 0;
-                    })[0];
+                    // Lampa к моменту запуска VLC уже где-то теряет/обнуляет
+                    // сохранённый таймкод (--start-time приходит около нуля).
+                    // Подставляем вместо него значение, снятое нами раньше,
+                    // сразу при клике на серию — пока оно ещё было верным.
+                    var resumeSec = Math.floor(lastResumeSeconds || 0);
+                    var hadStartTimeArg = false;
 
                     finalArgs = finalArgs.map(function (a) {
                         if (typeof a === 'string' && a.indexOf('--start-time=') === 0) {
-                            var ms = parseInt(a.split('=')[1], 10) || 0;
-                            return '--start-time=' + Math.floor(ms / 1000);
+                            hadStartTimeArg = true;
+                            return '--start-time=' + resumeSec;
                         }
                         return a;
                     });
 
-                    var fixedStartTimeArg = finalArgs.filter(function (a) {
-                        return typeof a === 'string' && a.indexOf('--start-time=') === 0;
-                    })[0];
+                    if (!hadStartTimeArg && resumeSec > 0) {
+                        finalArgs.unshift('--start-time=' + resumeSec);
+                    }
 
                     if (Lampa.Noty) {
-                        Lampa.Noty.show('spawn: raw=' + rawStartTimeArg + ' -> fixed=' + fixedStartTimeArg);
+                        Lampa.Noty.show('VLC resume: --start-time=' + resumeSec + ' сек');
                     }
                 }
 
