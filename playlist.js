@@ -84,11 +84,7 @@
 
     function updateTimeline(item, url, percent, time, duration) {
         try {
-            var card = getCard(item);
-            var season = getSeasonNumber();
-            var episodeNum = computeEpisodeNum(item, url, true);
-
-            var hash = episodeHash(card, season, episodeNum);
+            var hash = item && item.timeline && item.timeline.hash;
             if (!hash) return;
 
             Lampa.Timeline.update({
