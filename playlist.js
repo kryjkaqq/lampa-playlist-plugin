@@ -70,16 +70,51 @@
 
     // Строим объект следующего эпизода сами - у Lampa нет своего "playlist"
     // в сценарии просмотра файлов торрента (PlayerPlaylist.canNext() всегда
-    // false тут), так что штатный переход неприменим.
+    // false тут), так что штатный переход неприменим. Реальные id/path берём
+    // напрямую из TorrServer (просто подменить index= в url недостаточно -
+    // Lampa, похоже, пересобирает запрос по id/path, а не по url напрямую).
+    function fetchNextFileFromTorrServer(host, hash, nextIndex) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', host + '/torrents', false);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(JSON.stringify({ action: 'get', hash: hash }));
+
+            if (xhr.status !== 200 || !xhr.responseText) return null;
+
+            var data = JSON.parse(xhr.responseText);
+            var files = data && data.file_stats;
+            if (!Array.isArray(files)) return null;
+
+            for (var i = 0; i < files.length; i++) {
+                if (files[i].id === nextIndex) return files[i];
+            }
+            return null;
+        } catch (e) {
+            console.error('[playlist-plugin] fetchNextFileFromTorrServer error', e);
+            return null;
+        }
+    }
+
     function buildNextItem(item) {
         try {
             if (!item || !item.url) return null;
 
+            var hostMatch = item.url.match(/(https?:\/\/[^\/]+)/);
+            var hashMatch = item.url.match(/(?:link|hash)=([a-fA-F0-9]+)/);
             var idxM = item.url.match(/[?&]index=([0-9]+)/);
-            if (!idxM) return null;
+            if (!hostMatch || !hashMatch || !idxM) return null;
 
+            var host = hostMatch[1];
+            var torrentHash = hashMatch[1];
             var nextIndex = parseInt(idxM[1], 10) + 1;
-            var nextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + nextIndex);
+
+            var nextFile = fetchNextFileFromTorrServer(host, torrentHash, nextIndex);
+            if (!nextFile) return null; // следующего файла с таким id нет - серии кончились
+
+            var nextUrl = host + '/stream/' + encodeURIComponent(nextFile.path.split('/').pop()) +
+                '?link=' + torrentHash + '&index=' + nextIndex + '&play';
+
             var nextEpisode = (item.episode || 0) + 1;
             var season = item.season || getSeasonNumber();
             var card = getCard(item);
@@ -97,6 +132,8 @@
                 if (Object.prototype.hasOwnProperty.call(item, k)) nextItem[k] = item[k];
             }
             nextItem.url = nextUrl;
+            nextItem.id = nextIndex;
+            nextItem.path = nextFile.path;
             nextItem.episode = nextEpisode;
             nextItem.timeline = {
                 hash: nextHash,
@@ -256,18 +293,6 @@
         var originalPlay = Lampa.Player.play;
         Lampa.Player.play = function (item) {
             lastPlayItem = item;
-
-            try {
-                if (item) {
-                    alert(
-                        'id=' + item.id +
-                        ' | path=' + item.path +
-                        ' | fname=' + item.fname +
-                        ' | season=' + item.season + ' episode=' + item.episode +
-                        ' | url=' + item.url
-                    );
-                }
-            } catch (e) {}
 
             // Берём сохранённый таймкод НАПРЯМУЮ из хранилища Lampa по хэшу
             try {
