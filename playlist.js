@@ -124,6 +124,8 @@
 
     function watchVlc(item, url, onClose) {
         var lastKnownPercent = 0;
+        var lastKnownTime = 0;
+        var lastKnownDuration = 0;
 
         var poll = setInterval(function () {
             var headers = new Headers();
@@ -134,6 +136,8 @@
                 .then(function (status) {
                     if (status && status.time && status.length) {
                         lastKnownPercent = Math.round((status.time / status.length) * 100);
+                        lastKnownTime = status.time;
+                        lastKnownDuration = status.length;
                     }
                 })
                 .catch(function () {});
@@ -141,7 +145,7 @@
 
         onClose(function () {
             clearInterval(poll);
-            return lastKnownPercent;
+            return { percent: lastKnownPercent, time: lastKnownTime, duration: lastKnownDuration };
         });
     }
 
@@ -220,7 +224,7 @@
         onClose(function () {
             if (poll) clearInterval(poll);
             if (socket) { try { socket.destroy(); } catch (e) {} }
-            return lastKnownPercent;
+            return { percent: lastKnownPercent, time: timePos || 0, duration: duration || 0 };
         });
     }
 
@@ -324,24 +328,27 @@
                     return child;
                 }
 
-                var getPercentOnClose = null;
+                var getStateOnClose = null;
 
-                function onCloseRegister(fn) { getPercentOnClose = fn; }
+                function onCloseRegister(fn) { getStateOnClose = fn; }
 
                 if (vlc) watchVlc(itemAtLaunch, url, onCloseRegister);
                 if (mpv) watchMpv(mpvPipe, itemAtLaunch, url, onCloseRegister);
 
                 try {
                     child.on('close', function () {
-                        var lastKnownPercent = getPercentOnClose ? getPercentOnClose() : 0;
+                        var state = getStateOnClose ? getStateOnClose() : { percent: 0, time: 0, duration: 0 };
 
-                        if (lastKnownPercent < FINISH_THRESHOLD_PERCENT) {
+                        if (state.percent < FINISH_THRESHOLD_PERCENT) {
                             // Закрыл раньше конца — ничего не трогаем и не
                             // переключаем серию сами
                             return;
                         }
 
-                        updateTimeline(itemAtLaunch, url, 100, 0, 0);
+                        // Досмотрел до конца — фиксируем 100%, время ставим
+                        // равным длительности (а не нулю), чтобы не портить
+                        // ранее сохранённые данные фиктивным сбросом
+                        updateTimeline(itemAtLaunch, url, 100, state.duration, state.duration);
                         tryNext();
                     });
                 } catch (e) {
