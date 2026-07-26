@@ -237,6 +237,12 @@
             try {
                 if (item && item.url) {
                     computeEpisodeNum(item, item.url, true);
+
+                    if (Lampa.Noty) {
+                        var keys = item ? Object.keys(item).join(',') : 'NULL';
+                        var title = item.title || item.name || '';
+                        Lampa.Noty.show('KEYS: ' + keys + ' | title=' + title);
+                    }
                 }
             } catch (e) {}
 
@@ -263,8 +269,22 @@
                 var finalArgs = args;
                 var mpvPipe = null;
 
+                if (vlc && Array.isArray(finalArgs)) {
+                    // Фикс бага самой Lampa: она передаёт --start-time в VLC,
+                    // домножив секунды на 1000 (как будто это миллисекунды),
+                    // из-за чего VLC получает время далеко за пределами видео
+                    // и просто стартует с начала. Правим на лету.
+                    finalArgs = finalArgs.map(function (a) {
+                        if (typeof a === 'string' && a.indexOf('--start-time=') === 0) {
+                            var ms = parseInt(a.split('=')[1], 10) || 0;
+                            return '--start-time=' + Math.floor(ms / 1000);
+                        }
+                        return a;
+                    });
+                }
+
                 if (mpv) {
-                    var patched = patchArgsForMpv(args);
+                    var patched = patchArgsForMpv(finalArgs);
                     finalArgs = patched.args;
                     mpvPipe = patched.pipeName;
                 }
