@@ -194,8 +194,6 @@
             }
 
             socket = net.connect(pipeName, function () {
-                if (Lampa.Noty) Lampa.Noty.show('MPV IPC: подключено');
-
                 poll = setInterval(function () {
                     requestProp('duration', DUR_REQ_ID);
                     requestProp('time-pos', TIME_REQ_ID);
@@ -221,13 +219,12 @@
                         if (msg && msg.request_id === TIME_REQ_ID) {
                             if (typeof msg.data === 'number') timePos = msg.data;
                             updatePercent();
-                            if (Lampa.Noty) Lampa.Noty.show('MPV: time=' + timePos + ' dur=' + duration + ' percent=' + lastKnownPercent);
                         }
                         if (msg && msg.request_id === EOF_REQ_ID) {
-                            if (Lampa.Noty) Lampa.Noty.show('MPV eof-reached=' + JSON.stringify(msg.data) + ' (error=' + msg.error + ')');
+                            // debug отключен на время теста
                         }
                         if (msg && msg.request_id === IDLE_REQ_ID) {
-                            if (Lampa.Noty) Lampa.Noty.show('MPV idle-active=' + JSON.stringify(msg.data) + ' (error=' + msg.error + ')');
+                            // debug отключен на время теста
                         }
                     } catch (e) {}
                 });
@@ -364,9 +361,7 @@
                     finalArgs = patched.args;
                     mpvPipe = patched.pipeName;
 
-                    if (Lampa.Noty) {
-                        Lampa.Noty.show('MPV resume: --start=' + resumeSecMpv + ' сек');
-                    }
+                    // debug MPV resume отключен на время теста
                 }
 
                 var child = origSpawn.call(this, path, finalArgs, options);
