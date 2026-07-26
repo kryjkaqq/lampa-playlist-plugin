@@ -166,6 +166,8 @@
 
         var TIME_REQ_ID = 1001;
         var DUR_REQ_ID = 1002;
+        var EOF_REQ_ID = 1003;
+        var IDLE_REQ_ID = 1004;
         var timePos = null;
         var duration = null;
 
@@ -197,6 +199,8 @@
                 poll = setInterval(function () {
                     requestProp('duration', DUR_REQ_ID);
                     requestProp('time-pos', TIME_REQ_ID);
+                    requestProp('eof-reached', EOF_REQ_ID);
+                    requestProp('idle-active', IDLE_REQ_ID);
                 }, 4000);
             });
 
@@ -218,6 +222,12 @@
                             if (typeof msg.data === 'number') timePos = msg.data;
                             updatePercent();
                             if (Lampa.Noty) Lampa.Noty.show('MPV: time=' + timePos + ' dur=' + duration + ' percent=' + lastKnownPercent);
+                        }
+                        if (msg && msg.request_id === EOF_REQ_ID) {
+                            if (Lampa.Noty) Lampa.Noty.show('MPV eof-reached=' + JSON.stringify(msg.data) + ' (error=' + msg.error + ')');
+                        }
+                        if (msg && msg.request_id === IDLE_REQ_ID) {
+                            if (Lampa.Noty) Lampa.Noty.show('MPV idle-active=' + JSON.stringify(msg.data) + ' (error=' + msg.error + ')');
                         }
                     } catch (e) {}
                 });
@@ -284,6 +294,15 @@
                             ' | timeline keys=' + tlKeys +
                             ' | timeline=' + tlVal
                         );
+
+                        // Проверка гипотезы: если просто увеличить index=N в
+                        // текущем url на 1, получим ли мы URL следующей серии?
+                        var idxM = item.url.match(/[?&]index=([0-9]+)/);
+                        if (idxM) {
+                            var curIdx = parseInt(idxM[1], 10);
+                            var hypotheticalNextUrl = item.url.replace(/([?&]index=)[0-9]+/, '$1' + (curIdx + 1));
+                            Lampa.Noty.show('HYPOTHETICAL next url (index+1): ' + hypotheticalNextUrl);
+                        }
                     }
                 }
             } catch (e) {}
