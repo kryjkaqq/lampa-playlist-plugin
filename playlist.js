@@ -60,11 +60,24 @@
         return map;
     }
 
-    function computeEpisodeNum(item, url) {
+    function computeEpisodeNum(item, url, debug) {
         var indexMatch = (url || '').match(/[?&]index=([0-9]+)/);
         var rawIndex = indexMatch ? parseInt(indexMatch[1], 10) : 0;
         var map = buildIndexToEpisodeMap(item);
+        var mapSize = Object.keys(map).length;
         var pos = map.hasOwnProperty(rawIndex) ? map[rawIndex] : rawIndex;
+
+        if (debug && Lampa.Noty) {
+            Lampa.Noty.show(
+                'DEBUG raw=' + rawIndex +
+                ' playlist.len=' + (item && Array.isArray(item.playlist) ? item.playlist.length : 'NO_PLAYLIST') +
+                ' map.size=' + mapSize +
+                ' inMap=' + map.hasOwnProperty(rawIndex) +
+                ' pos=' + pos +
+                ' ep=' + (pos + 1)
+            );
+        }
+
         return pos + 1;
     }
 
@@ -72,7 +85,7 @@
         try {
             var card = getCard(item);
             var season = getSeasonNumber();
-            var episodeNum = computeEpisodeNum(item, url);
+            var episodeNum = computeEpisodeNum(item, url, true);
 
             var hash = episodeHash(card, season, episodeNum);
             if (!hash) return;
@@ -220,6 +233,13 @@
         var originalPlay = Lampa.Player.play;
         Lampa.Player.play = function (item) {
             lastPlayItem = item;
+
+            try {
+                if (item && item.url) {
+                    computeEpisodeNum(item, item.url, true);
+                }
+            } catch (e) {}
+
             return originalPlay.call(this, item);
         };
 
