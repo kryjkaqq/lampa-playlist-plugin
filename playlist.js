@@ -108,11 +108,15 @@
 
     function tryNext() {
         try {
-            if (Lampa.PlayerPlaylist.canNext()) {
+            var can = Lampa.PlayerPlaylist.canNext();
+            if (Lampa.Noty) Lampa.Noty.show('tryNext: canNext=' + can);
+
+            if (can) {
                 Lampa.PlayerPlaylist.next();
             }
         } catch (e) {
             console.error('[playlist-plugin] PlayerPlaylist.next error', e);
+            if (Lampa.Noty) Lampa.Noty.show('tryNext error: ' + e.message);
         }
     }
 
@@ -253,7 +257,14 @@
                 var hash = item && item.timeline && item.timeline.hash;
                 if (hash && Lampa.Timeline && Lampa.Timeline.view) {
                     var saved = Lampa.Timeline.view(hash);
-                    lastResumeSeconds = (saved && typeof saved.time === 'number') ? saved.time : 0;
+                    // Если серия уже досмотрена почти до конца - не пытаемся
+                    // резюмировать буквально с конца файла (плеер с флагом
+                    // "закрыться по окончании" тут же выйдет обратно)
+                    if (saved && saved.percent >= 95) {
+                        lastResumeSeconds = 0;
+                    } else {
+                        lastResumeSeconds = (saved && typeof saved.time === 'number') ? saved.time : 0;
+                    }
                 } else {
                     lastResumeSeconds = 0;
                 }
