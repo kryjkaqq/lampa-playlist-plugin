@@ -319,9 +319,20 @@
                 }
 
                 if (mpv) {
-                    var patched = patchArgsForMpv(finalArgs);
+                    var resumeSecMpv = Math.floor(lastResumeSeconds || 0);
+                    var argsWithResume = finalArgs;
+
+                    if (resumeSecMpv > 0) {
+                        argsWithResume = ['--start=' + resumeSecMpv].concat(finalArgs);
+                    }
+
+                    var patched = patchArgsForMpv(argsWithResume);
                     finalArgs = patched.args;
                     mpvPipe = patched.pipeName;
+
+                    if (Lampa.Noty) {
+                        Lampa.Noty.show('MPV resume: --start=' + resumeSecMpv + ' сек');
+                    }
                 }
 
                 var child = origSpawn.call(this, path, finalArgs, options);
